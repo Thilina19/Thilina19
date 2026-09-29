@@ -1,0 +1,692 @@
+//@version=6
+// This work is licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+// https://creativecommons.org/licenses/by-nc-sa/4.0/
+// © Zeiierman {
+indicator("Buyers & Sellers Profile + Dynamic S/R (Zeiierman)",overlay=true,max_lines_count=250,max_labels_count=500,max_boxes_count=300,max_bars_back=5000)
+//}
+
+// ~~ Tooltips {
+var string tt1="Number of historical bars used by the large rolling volume profile. The same lookback is reconstructed historically when a pivot is evaluated, so old pivots are judged only with information available at that time."
+var string tt2="Number of price rows used to discretize the rolling profile. More rows increase price resolution but also increase drawing and calculation load."
+var string tt3="Maximum horizontal width of the displayed profile in chart bars. The POC row reaches this width; other rows scale relative to it."
+var string tt4="Horizontal gap between the current bar and the left edge of the displayed rolling profile."
+var string tt5="Master switch for the large rolling profile shown at the right side of the chart."
+var string tt6="Highlight the highest-volume profile row and draw its short guide line and price label."
+var string tt7="Outline profile rows that currently contain an active profile-guided support or resistance level."
+var string tt8="Left/right pivot confirmation length. A value of 5 means a pivot is confirmed five bars after the actual swing bar."
+var string tt9="Maximum ATR distance around a raw pivot in which the profile engine may search for a stronger nearby volume node."
+var string tt10="Minimum candidate-node volume relative to the profile POC. Lower values admit weaker nearby profile structure."
+var string tt11="Minimum combined profile evidence needed before a raw price pivot can become an active level."
+var string tt12="Maximum fraction of the distance from the raw pivot toward the selected profile node. Actual pull is scaled by profile evidence."
+var string tt13="Minimum final 0-100 score required after profile evidence, absorption, relative pivot volume and wick rejection are combined."
+var string tt14="Maximum number of active profile-guided levels. When exceeded, the weakest active level is removed first."
+var string tt15="Same-side levels within this ATR distance are treated as duplicates. A stronger new candidate replaces the weaker nearby level."
+var string tt16="ATR buffer beyond an active level required for a confirmed close to invalidate that level."
+var string tt17="Color used for active support levels, support endpoint dots and support profile-row outlines."
+var string tt18="Color used for active resistance levels, resistance endpoint dots and resistance profile-row outlines."
+var string tt19="Accent color used for the inner profile-confirmed pivot core and the raw-pivot-to-final-level pull guide."
+var string tt20="Color of the faint raw price pivot marker before the profile engine relocates the final level."
+var string tt21="Estimated buying-volume color in the large profile. Buy/sell attribution comes from candle close location inside each bar range."
+var string tt22="Estimated selling-volume color in the large profile. Buy/sell attribution is approximate rather than true bid/ask volume."
+var string tt23="Color used for the displayed profile point of control."
+var string tt24="Shared line style used by active support and resistance levels."
+var string tt25="Show the layered profile-confirmed pivot marker at the final relocated level price."
+var string tt26="Show the faint raw pivot marker and dotted vertical guide connecting it to the final profile-guided level."
+var string tt27="Show the final 0-100 level score inside the historical profile-confirmed pivot marker."
+var string tt28="Show the current endpoint dot and one-number score label at the right edge of each active level."
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Groups {
+gPROF="Large Rolling Profile"
+gENG="Profile-Guided Pivot Engine"
+gSTY="Visual Style"
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Inputs {
+profLb=input.int(600,"Lookback",minval=100,maxval=1500,group=gPROF,inline="p1")
+profRows=input.int(72,"Rows",minval=24,maxval=100,group=gPROF,inline="p1",tooltip=tt1+"\n\n"+tt2)
+profW=input.int(58,"Width",minval=15,maxval=110,group=gPROF,inline="p2")
+profOff=input.int(8,"Offset",minval=2,maxval=50,group=gPROF,inline="p2",tooltip=tt3+"\n\n"+tt4)
+showProf=input.bool(true,"Show Profile",group=gPROF,inline="p3")
+showPoc=input.bool(true,"POC",group=gPROF,inline="p3",active=showProf)
+showLvlRows=input.bool(true,"Level Rows",group=gPROF,inline="p3",active=showProf,tooltip=tt5+"\n\n"+tt6+"\n\n"+tt7)
+swingLen=input.int(5,"Swing Length",minval=2,maxval=25,group=gENG,inline="e1")
+srchAtr=input.float(1.20,"Search ATR",minval=0.20,maxval=3.00,step=0.05,group=gENG,inline="e1",tooltip=tt8+"\n\n"+tt9)
+nodeMin=input.float(0.08,"Min Node",minval=0.0,maxval=1.0,step=0.01,group=gENG,inline="e2")
+evidMin=input.float(0.22,"Min Evidence",minval=0.0,maxval=1.0,step=0.01,group=gENG,inline="e2",tooltip=tt10+"\n\n"+tt11)
+pullMax=input.float(0.85,"Profile Pull",minval=0.0,maxval=1.0,step=0.05,group=gENG,inline="e3")
+scoreMin=input.float(30.0,"Min Score",minval=0,maxval=100,step=1,group=gENG,inline="e3",tooltip=tt12+"\n\n"+tt13)
+maxLvl=input.int(20,"Max Levels",minval=2,maxval=40,group=gENG,inline="e4")
+mergeAtr=input.float(0.16,"Merge ATR",minval=0.0,maxval=1.0,step=0.02,group=gENG,inline="e4")
+breakAtr=input.float(0.10,"Break ATR",minval=0.0,maxval=0.5,step=0.01,group=gENG,inline="e4",tooltip=tt14+"\n\n"+tt15+"\n\n"+tt16)
+supCol=input.color(color.rgb(31,199,116),"Support",group=gSTY,inline="c1")
+resCol=input.color(color.rgb(239,75,75),"Resistance",group=gSTY,inline="c1",tooltip=tt17+"\n\n"+tt18)
+coreCol=input.color(color.rgb(255,205,64),"Pivot Core",group=gSTY,inline="c2")
+rawCol=input.color(color.rgb(160,166,178),"Raw Pivot",group=gSTY,inline="c2",tooltip=tt19+"\n\n"+tt20)
+buyCol=input.color(color.rgb(43,158,143),"Profile Buy",group=gSTY,inline="c3")
+sellCol=input.color(color.rgb(74,88,182),"Profile Sell",group=gSTY,inline="c3")
+pocCol=input.color(color.rgb(255,145,32),"POC",group=gSTY,inline="c3",tooltip=tt21+"\n\n"+tt22+"\n\n"+tt23)
+lvlStyle=input.string("Solid","Line Style",options=["Solid","Dotted","Dashed"],group=gSTY,inline="s1",tooltip=tt24)
+showDots=input.bool(true,"Pivot Dots",group=gSTY,inline="s2")
+showRaw=input.bool(true,"Raw Pivot",group=gSTY,inline="s2",active=showDots)
+showDotScore=input.bool(true,"Dot Score",group=gSTY,inline="s2",active=showDots)
+showEdge=input.bool(true,"Right Score",group=gSTY,inline="s2",tooltip=tt25+"\n\n"+tt26+"\n\n"+tt27+"\n\n"+tt28)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Constants {
+int VOL_LEN=40
+int ABS_RAD=math.min(3,swingLen)
+float PIV_VOL_X=2.2
+float ABS_BODY_MAX=0.40
+float ABS_VOL_X=1.5
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Types {
+type Lvl
+    float p
+    float sc
+    float raw
+    float node
+    float evid
+    float nStr
+    bool supp
+    int born
+    line ln
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Helpers {
+clip(float x)=>math.max(0.0,math.min(1.0,x))
+lstyle(string s)=>s=="Dotted"?line.style_dotted:s=="Dashed"?line.style_dashed:line.style_solid
+lwidth(float s)=>s>=82?4:s>=62?3:2
+lalpha(float s)=>s>=82?8:s>=62?22:s>=45?38:52
+rings(float s)=>s>=82?4:s>=66?3:s>=50?2:1
+rsize(int r)=>r>=4?size.large:r==3?size.normal:r==2?size.small:size.tiny
+ralpha(int r)=>r>=4?68:r==3?52:r==2?30:4
+row_id(float p,float bot,float step,int rows)=>math.max(0,math.min(rows-1,int(math.floor((p-bot)/step))))
+lvl_col(bool supp)=>supp?supCol:resCol
+
+clear_boxes(array<box> a)=>
+    while a.size()>0
+        box.delete(a.pop())
+
+clear_lines(array<line> a)=>
+    while a.size()>0
+        line.delete(a.pop())
+
+clear_labels(array<label> a)=>
+    while a.size()>0
+        label.delete(a.pop())
+
+profile(int newest,int oldest,int rows)=>
+    float lo=low[newest]
+    float hi=high[newest]
+    for i=newest to oldest
+        lo:=math.min(lo,low[i])
+        hi:=math.max(hi,high[i])
+    float span=math.max(hi-lo,syminfo.mintick*rows)
+    float bot=lo-(span-(hi-lo))*0.5
+    float step=span/rows
+    array<float> tot=array.new_float(rows,0.0)
+    array<float> buy=array.new_float(rows,0.0)
+    for i=newest to oldest
+        float l=low[i]
+        float h=high[i]
+        float r=h-l
+        float v=math.max(nz(volume[i],0.0),0.0)
+        float bf=r>0?clip((close[i]-l)/r):0.5
+        int r0=row_id(l,bot,step,rows)
+        int r1=row_id(h,bot,step,rows)
+        for j=r0 to r1
+            float rl=bot+j*step
+            float ov=r>0?math.max(0.0,math.min(h,rl+step)-math.max(l,rl)):step
+            float frac=r>0?ov/r:1.0
+            if frac>0
+                float av=v*frac
+                tot.set(j,tot.get(j)+av)
+                buy.set(j,buy.get(j)+av*bf)
+    [bot,step,tot,buy]
+
+pivot_features(bool supp,float avgVol)=>
+    float vb=nz(avgVol[swingLen],volume[swingLen])
+    float vr=vb>0?nz(volume[swingLen],0.0)/vb:1.0
+    float vSc=clip((vr-0.8)/(PIV_VOL_X-0.8))
+    float pr=math.max(high[swingLen]-low[swingLen],syminfo.mintick)
+    float wick=supp?math.min(open[swingLen],close[swingLen])-low[swingLen]:high[swingLen]-math.max(open[swingLen],close[swingLen])
+    float wSc=clip((wick/pr)/0.50)
+    float absSc=0.0
+    for n=0 to ABS_RAD*2
+        int o=swingLen-ABS_RAD+n
+        float cr=math.max(high[o]-low[o],syminfo.mintick)
+        float v=math.max(nz(volume[o],0.0),0.0)
+        float base=nz(avgVol[o],v)
+        float vRat=base>0?v/base:1.0
+        float bRat=math.abs(close[o]-open[o])/cr
+        float small=clip((ABS_BODY_MAX-bRat)/ABS_BODY_MAX)
+        float av=clip((vRat-1.0)/(ABS_VOL_X-1.0))
+        absSc:=math.max(absSc,math.sqrt(small*av))
+    [vSc,wSc,absSc]
+
+profile_node(float raw,bool supp,float atrP,float bot,float step,array<float> tot,array<float> buy)=>
+    float mx=math.max(tot.max(),0.0000001)
+    float rad=math.max(atrP*srchAtr,step*2.0)
+    float bestP=raw
+    float bestE=-1.0
+    float bestS=0.0
+    float bestPk=0.0
+    float bestDir=0.5
+    int rows=tot.size()
+    for r=0 to rows-1
+        float p=bot+(r+0.5)*step
+        float d=math.abs(p-raw)
+        if d<=rad
+            float rv=tot.get(r)
+            float str=rv/mx
+            float lv=r>0?tot.get(r-1):rv
+            float rv2=r<rows-1?tot.get(r+1):rv
+            float nAvg=math.max((lv+rv2)*0.5,mx*0.01)
+            float pk=clip((rv/nAvg-0.85)/0.65)
+            float bSh=rv>0?clip(buy.get(r)/rv):0.5
+            float dir=supp?bSh:1.0-bSh
+            float prox=1.0-d/rad
+            float e=0.50*str+0.20*pk+0.20*dir+0.10*prox
+            if e>bestE
+                bestE:=e
+                bestP:=p
+                bestS:=str
+                bestPk:=pk
+                bestDir:=dir
+    [bestP,math.max(bestE,0.0),bestS,bestPk,bestDir]
+
+nearby(array<Lvl> a,float p,bool supp,float tol)=>
+    int id=-1
+    float best=1e20
+    if a.size()>0
+        for i=0 to a.size()-1
+            Lvl lv=a.get(i)
+            if lv.supp==supp
+                float d=math.abs(lv.p-p)
+                if d<=tol and d<best
+                    best:=d
+                    id:=i
+    id
+
+make_line(int born,float p,bool supp,float sc)=>line.new(born,p,time,p,xloc=xloc.bar_time,extend=extend.none,
+ color=color.new(lvl_col(supp),lalpha(sc)),width=lwidth(sc),style=lstyle(lvlStyle))
+
+store_lvl(array<Lvl> a,float p,float raw,float node,float evid,float nStr,bool supp,float sc,int born,float atrP)=>
+    bool changed=false
+    float tol=math.max(atrP*mergeAtr,syminfo.mintick)
+    int id=nearby(a,p,supp,tol)
+    if id>=0
+        Lvl lv=a.get(id)
+        if sc>lv.sc
+            lv.p:=p
+            lv.sc:=sc
+            lv.raw:=raw
+            lv.node:=node
+            lv.evid:=evid
+            lv.nStr:=nStr
+            lv.born:=born
+            line.set_xy1(lv.ln,born,p)
+            line.set_xy2(lv.ln,time,p)
+            line.set_color(lv.ln,color.new(lvl_col(supp),lalpha(sc)))
+            line.set_width(lv.ln,lwidth(sc))
+            a.set(id,lv)
+            changed:=true
+    else
+        a.push(Lvl.new(p,sc,raw,node,evid,nStr,supp,born,make_line(born,p,supp,sc)))
+        changed:=true
+    changed
+
+remove_lvl(array<Lvl> a,int id)=>
+    Lvl lv=a.get(id)
+    line.delete(lv.ln)
+    a.remove(id)
+    0
+
+trim_lvls(array<Lvl> a)=>
+    while a.size()>maxLvl
+        int weak=0
+        float sc=a.get(0).sc
+        for i=1 to a.size()-1
+            if a.get(i).sc<sc
+                sc:=a.get(i).sc
+                weak:=i
+        remove_lvl(a,weak)
+    0
+
+update_lvls(array<Lvl> a)=>
+    if a.size()>0
+        for i=0 to a.size()-1
+            Lvl lv=a.get(i)
+            line.set_xy2(lv.ln,time,lv.p)
+            line.set_color(lv.ln,color.new(lvl_col(lv.supp),lalpha(lv.sc)))
+            line.set_width(lv.ln,lwidth(lv.sc))
+            line.set_style(lv.ln,lstyle(lvlStyle))
+    0
+
+level_row(array<Lvl> a,float lo,float hi)=>
+    int side=0
+    if a.size()>0
+        for i=0 to a.size()-1
+            Lvl lv=a.get(i)
+            if lv.p>=lo and lv.p<=hi
+                side:=lv.supp?1:-1
+                break
+    side
+
+score_tip(Lvl lv)=>"Raw pivot: "+str.tostring(lv.raw,format.mintick)+"\nProfile node: "+str.tostring(lv.node,format.mintick)
+ +"\nProfile evidence: "+str.tostring(lv.evid*100.0,"#")+"%\nNode strength vs POC: "+str.tostring(lv.nStr*100.0,"#")
+ +"%\nFinal level: "+str.tostring(lv.p,format.mintick)
+
+pivot_eval(array<Lvl> a,float raw,bool supp,float avgVol,float atr)=>
+    int avail=bar_index-swingLen+1
+    int bars=math.max(1,math.min(profLb,avail))
+    int newest=swingLen
+    int oldest=swingLen+bars-1
+    [bot,step,tot,buy]=profile(newest,oldest,profRows)
+    float atrP=math.max(nz(atr[swingLen],syminfo.mintick),syminfo.mintick)
+    [node,evid,nStr,pk,dir]=profile_node(raw,supp,atrP,bot,step,tot,buy)
+    [vSc,wSc,aSc]=pivot_features(supp,avgVol)
+    bool ok=nStr>=nodeMin and evid>=evidMin
+    float pull=ok?pullMax*clip(evid/0.65):0.0
+    float p=raw+(node-raw)*pull
+    float sc=100.0*(0.50*evid+0.20*aSc+0.15*vSc+0.15*wSc)
+    bool stored=ok and sc>=scoreMin?store_lvl(a,p,raw,node,evid,nStr,supp,sc,time[swingLen],atrP):false
+    [stored,sc,p,node,evid,nStr,pk,dir]
+
+manage_breaks(array<Lvl> a,float atr)=>
+    bool sBreak=false
+    bool rBreak=false
+    if a.size()>0
+        for i=a.size()-1 to 0
+            Lvl lv=a.get(i)
+            float buf=math.max(nz(atr,0.0)*breakAtr,0.0)
+            bool broken=barstate.isconfirmed and (lv.supp?close<lv.p-buf:close>lv.p+buf)
+            if broken
+                sBreak:=sBreak or lv.supp
+                rBreak:=rBreak or not lv.supp
+                remove_lvl(a,i)
+    [sBreak,rBreak]
+
+draw_markers(array<Lvl> a,array<label> lbs,array<line> lns)=>
+    if showDots and a.size()>0
+        for i=0 to a.size()-1
+            Lvl lv=a.get(i)
+            color base=lvl_col(lv.supp)
+            if showRaw
+                lbs.push(label.new(x=lv.born,y=lv.raw,text="",xloc=xloc.bar_time,yloc=yloc.price,style=label.style_circle,
+                 color=color.new(rawCol,60),textcolor=rawCol,size=size.tiny))
+                lns.push(line.new(x1=lv.born,y1=lv.raw,x2=lv.born,y2=lv.p,xloc=xloc.bar_time,color=color.new(coreCol,45),
+                 width=1,style=line.style_dotted))
+            int rc=rings(lv.sc)
+            for r=rc to 1
+                color fill=r==1?color.new(coreCol,lv.evid>=0.45?0:22):color.new(base,ralpha(r))
+                lbs.push(label.new(x=lv.born,y=lv.p,text="",xloc=xloc.bar_time,yloc=yloc.price,style=label.style_circle,
+                 color=fill,textcolor=color.white,size=rsize(r)))
+            if showDotScore
+                lbs.push(label.new(x=lv.born,y=lv.p,text=str.tostring(lv.sc,"#"),xloc=xloc.bar_time,yloc=yloc.price,
+                 style=label.style_none,color=color.new(color.black,100),textcolor=color.white,size=size.tiny,
+                  tooltip=score_tip(lv)))
+    0
+
+draw_edge(array<Lvl> a,array<label> lbs)=>
+    if showEdge and a.size()>0
+        for i=0 to a.size()-1
+            Lvl lv=a.get(i)
+            color c=lvl_col(lv.supp)
+            lbs.push(label.new(x=bar_index,y=lv.p,text="",xloc=xloc.bar_index,yloc=yloc.price,style=label.style_circle,
+             color=c,textcolor=c,size=size.tiny))
+            lbs.push(label.new(x=bar_index+1,y=lv.p,text=str.tostring(lv.sc,"#"),xloc=xloc.bar_index,yloc=yloc.price,
+             style=label.style_label_left,color=color.new(c,100),textcolor=c,size=size.small))
+    0
+
+draw_profile(array<Lvl> a,array<box> bx,array<line> ln,array<label> lb)=>
+    int bars=math.max(1,math.min(profLb,bar_index+1))
+    [bot,step,tot,buy]=profile(0,bars-1,profRows)
+    float mx=tot.max()
+    if mx>0
+        int poc=tot.indexof(mx)
+        int x=bar_index+profOff
+        for r=0 to profRows-1
+            float rv=tot.get(r)
+            if rv>0
+                float str=rv/mx
+                float bSh=clip(buy.get(r)/rv)
+                int tw=math.max(1,int(math.round(profW*str)))
+                int bw=int(math.round(tw*bSh))
+                int sw=tw-bw
+                float y0=bot+(r+0.08)*step
+                float y1=bot+(r+0.92)*step
+                int fade=int(math.round(76.0-46.0*str))
+                if bw>0
+                    bx.push(box.new(left=x,top=y1,right=x+bw,bottom=y0,xloc=xloc.bar_index,border_color=color.new(buyCol,100),
+                     bgcolor=color.new(buyCol,fade)))
+                if sw>0
+                    bx.push(box.new(left=x+bw,top=y1,right=x+tw,bottom=y0,xloc=xloc.bar_index,border_color=color.new(sellCol,100),
+                     bgcolor=color.new(sellCol,fade)))
+                if showPoc and r==poc
+                    bx.push(box.new(left=x,top=y1,right=x+tw,bottom=y0,xloc=xloc.bar_index,border_color=pocCol,border_width=2,
+                     bgcolor=color.new(pocCol,88)))
+                if showLvlRows
+                    int side=level_row(a,y0,y1)
+                    if side!=0
+                        color c=side>0?supCol:resCol
+                        bx.push(box.new(left=x,top=y1,right=x+tw,bottom=y0,xloc=xloc.bar_index,border_color=c,border_width=2,
+                         bgcolor=color.new(coreCol,93)))
+        if showPoc
+            float p=bot+(poc+0.5)*step
+            ln.push(line.new(x1=math.max(0,bar_index-18),y1=p,x2=x,y2=p,xloc=xloc.bar_index,color=color.new(pocCol,25),width=2))
+            lb.push(label.new(x=x+profW+2,y=p,text="POC "+str.tostring(p,format.mintick),xloc=xloc.bar_index,yloc=yloc.price,
+             style=label.style_label_left,color=color.new(pocCol,100),textcolor=pocCol,size=size.tiny))
+    0
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Core Series {
+avgVol=ta.sma(volume,VOL_LEN)
+atr=ta.atr(14)
+ph=ta.pivothigh(high,swingLen,swingLen)
+pl=ta.pivotlow(low,swingLen,swingLen)
+ready=bar_index>VOL_LEN+swingLen*2+5
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Objects & State {
+var array<Lvl> lvls=array.new<Lvl>()
+var array<label> mLb=array.new_label()
+var array<label> eLb=array.new_label()
+var array<label> pLb=array.new_label()
+var array<box> pBx=array.new_box()
+var array<line> tLn=array.new_line()
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Pivot Evaluation {
+bool newSup=false
+bool newRes=false
+
+if ready and not na(pl)
+    [stored,sc,p,node,evid,nStr,pk,dir]=pivot_eval(lvls,pl,true,avgVol,atr)
+    newSup:=stored
+
+if ready and not na(ph)
+    [stored,sc,p,node,evid,nStr,pk,dir]=pivot_eval(lvls,ph,false,avgVol,atr)
+    newRes:=stored
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Level Lifecycle {
+[supBreak,resBreak]=manage_breaks(lvls,atr)
+trim_lvls(lvls)
+update_lvls(lvls)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Drawing {
+if barstate.islast
+    clear_labels(mLb)
+    clear_labels(eLb)
+    clear_labels(pLb)
+    clear_boxes(pBx)
+    clear_lines(tLn)
+
+    draw_markers(lvls,mLb,tLn)
+    draw_edge(lvls,eLb)
+    if showProf
+        draw_profile(lvls,pBx,tLn,pLb)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Alerts {
+alertcondition(newSup,"New profile-confirmed support","A structural pivot low was confirmed by the large rolling volume profile and converted into support.")
+alertcondition(newRes,"New profile-confirmed resistance","A structural pivot high was confirmed by the large rolling volume profile and converted into resistance.")
+alertcondition(supBreak,"Support broken","An active profile-guided support was broken on a confirmed close.")
+alertcondition(resBreak,"Resistance broken","An active profile-guided resistance was broken on a confirmed close.")
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+//=====================================================================================================================
+// ADD-ON: Signals & Performance Dashboard
+// Everything below is an add-on. The original indicator above is unchanged; this section only reads its
+// outputs (newSup, newRes, supBreak, resBreak, atr, ready) to generate signals and track Entries / Wins / Losses.
+//=====================================================================================================================
+
+// ~~ Dashboard Tooltips {
+var string tt29="Which indicator events become trade signals.\n\nLevel Breaks: resistance broken on a confirmed close = Long, support broken on a confirmed close = Short.\n\nNew Levels: new profile-confirmed support = Long, new profile-confirmed resistance = Short.\n\nBoth: either event."
+var string tt30="Each entry is taken at the close of the signal bar. Stop and target are placed this many ATR(14) away from the entry.\n\nWin = target reached first. Loss = stop reached first. If both are touched inside the same bar it counts as a Loss (conservative).\n\nOnly one trade is open at a time: signals that fire while a trade is open are counted as Signals but not as Entries."
+var string tt31="Timezone used to split days and weeks (weeks start on Monday). 'Exchange' uses the symbol's exchange timezone. Otherwise type e.g. GMT+5:30, UTC or America/New_York."
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Dashboard Inputs {
+gDASH="Signals & Dashboard"
+sigMode=input.string("Level Breaks","Signal Source",options=["Level Breaks","New Levels","Both"],group=gDASH,inline="d1",tooltip=tt29)
+slAtr=input.float(1.0,"Stop ATR",minval=0.1,maxval=10.0,step=0.1,group=gDASH,inline="d2")
+tpAtr=input.float(1.5,"Target ATR",minval=0.1,maxval=20.0,step=0.1,group=gDASH,inline="d2",tooltip=tt30)
+showSig=input.bool(true,"Entry Marks",group=gDASH,inline="d3")
+showWL=input.bool(true,"W/L Marks",group=gDASH,inline="d3")
+showDash=input.bool(true,"Dashboard",group=gDASH,inline="d3")
+dashPos=input.string("Top Right","Position",options=["Top Right","Top Left","Top Center","Middle Right","Middle Left","Bottom Right","Bottom Left","Bottom Center"],group=gDASH,inline="d4")
+dashTxt=input.string("Small","Size",options=["Tiny","Small","Normal"],group=gDASH,inline="d4")
+dashTz=input.string("Exchange","Timezone",group=gDASH,inline="d5",tooltip=tt31)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Dashboard Helpers {
+// Stats array layout: 0=Entries 1=Wins 2=Losses 3=Long signals 4=Short signals
+int ST_E=0
+int ST_W=1
+int ST_L=2
+int ST_LS=3
+int ST_SS=4
+
+zero_arr(array<int> a)=>
+    for i=0 to a.size()-1
+        a.set(i,0)
+    0
+
+bump(array<int> a,int i)=>
+    a.set(i,a.get(i)+1)
+    0
+
+win_rate(int w,int l)=>w+l>0?100.0*w/(w+l):na
+wr_txt(float x)=>na(x)?"–":str.tostring(x,"0.0")+"%"
+wr_col(float x)=>na(x)?color.gray:x>=50?supCol:resCol
+
+dash_pos(string s)=>
+    switch s
+        "Top Left"=>position.top_left
+        "Top Center"=>position.top_center
+        "Middle Right"=>position.middle_right
+        "Middle Left"=>position.middle_left
+        "Bottom Right"=>position.bottom_right
+        "Bottom Left"=>position.bottom_left
+        "Bottom Center"=>position.bottom_center
+        =>position.top_right
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Day / Week Keys {
+string dTz=dashTz=="Exchange"?syminfo.timezone:dashTz
+int dayNum=int(math.round(timestamp("UTC",year(time,dTz),month(time,dTz),dayofmonth(time,dTz),0,0)/86400000.0))
+int weekKey=int(math.floor((dayNum+3)/7.0))     // 1970-01-01 was a Thursday -> +3 makes weeks start on Monday
+int wdIdx=(dayofweek(time,dTz)+5)%7              // 0=Mon ... 6=Sun
+bool newDay=dayNum!=nz(dayNum[1],dayNum)
+bool newWeek=weekKey!=nz(weekKey[1],weekKey)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Stats State {
+var array<int> stDay=array.new_int(5,0)
+var array<int> stWeek=array.new_int(5,0)
+var array<int> stAll=array.new_int(5,0)
+// Per weekday (Mon..Sun): current week and all-time
+var array<int> wkE=array.new_int(7,0)
+var array<int> wkW=array.new_int(7,0)
+var array<int> wkL=array.new_int(7,0)
+var array<int> alE=array.new_int(7,0)
+var array<int> alW=array.new_int(7,0)
+var array<int> alL=array.new_int(7,0)
+
+// Open trade
+var int tDir=0
+var float tEntry=na
+var float tSl=na
+var float tTp=na
+var int tDay=na
+var int tWeek=na
+var int tWd=na
+var int tBar=na
+
+if newDay
+    zero_arr(stDay)
+if newWeek
+    zero_arr(stWeek)
+    zero_arr(wkE)
+    zero_arr(wkW)
+    zero_arr(wkL)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Signals {
+bool sigOk=ready and barstate.isconfirmed
+bool longRaw=sigOk and (sigMode=="New Levels"?newSup:sigMode=="Level Breaks"?resBreak:(newSup or resBreak))
+bool shortRaw=sigOk and (sigMode=="New Levels"?newRes:sigMode=="Level Breaks"?supBreak:(newRes or supBreak))
+
+if longRaw
+    bump(stDay,ST_LS)
+    bump(stWeek,ST_LS)
+    bump(stAll,ST_LS)
+if shortRaw
+    bump(stDay,ST_SS)
+    bump(stWeek,ST_SS)
+    bump(stAll,ST_SS)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Trade Resolution (W/L credited to the day the trade was entered) {
+bool tradeWin=false
+bool tradeLoss=false
+
+if barstate.isconfirmed and tDir!=0 and bar_index>tBar
+    bool hitSl=tDir>0?low<=tSl:high>=tSl
+    bool hitTp=tDir>0?high>=tTp:low<=tTp
+    if hitSl or hitTp
+        bool win=hitTp and not hitSl
+        tradeWin:=win
+        tradeLoss:=not win
+        int k=win?ST_W:ST_L
+        bump(stAll,k)
+        if win
+            bump(alW,tWd)
+        else
+            bump(alL,tWd)
+        if tWeek==weekKey
+            bump(stWeek,k)
+            if win
+                bump(wkW,tWd)
+            else
+                bump(wkL,tWd)
+        if tDay==dayNum
+            bump(stDay,k)
+        tDir:=0
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Entries {
+bool longEntry=false
+bool shortEntry=false
+
+if tDir==0 and longRaw!=shortRaw and not na(atr)
+    tDir:=longRaw?1:-1
+    tEntry:=close
+    tSl:=close-tDir*atr*slAtr
+    tTp:=close+tDir*atr*tpAtr
+    tDay:=dayNum
+    tWeek:=weekKey
+    tWd:=wdIdx
+    tBar:=bar_index
+    longEntry:=tDir>0
+    shortEntry:=tDir<0
+    bump(stDay,ST_E)
+    bump(stWeek,ST_E)
+    bump(stAll,ST_E)
+    bump(wkE,wdIdx)
+    bump(alE,wdIdx)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Signal Marks {
+plotshape(showSig and longEntry,"Long Entry",shape.triangleup,location.belowbar,supCol,text="BUY",textcolor=supCol,size=size.small)
+plotshape(showSig and shortEntry,"Short Entry",shape.triangledown,location.abovebar,resCol,text="SELL",textcolor=resCol,size=size.small)
+plotchar(showWL and tradeWin,"Win","✔",location.abovebar,supCol,size=size.tiny)
+plotchar(showWL and tradeLoss,"Loss","✖",location.belowbar,resCol,size=size.tiny)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Dashboard {
+var table dash=table.new(dash_pos(dashPos),6,15,bgcolor=color.new(color.rgb(14,17,23),8),frame_color=color.new(color.gray,60),
+ frame_width=1,border_color=color.new(color.gray,80),border_width=1)
+
+string dSz=dashTxt=="Tiny"?size.tiny:dashTxt=="Normal"?size.normal:size.small
+color dTxt=color.rgb(220,224,232)
+color dHdr=color.rgb(40,46,60)
+
+dcell(int c,int r,string s,color tc,color bg)=>
+    table.cell(dash,c,r,s,text_color=tc,bgcolor=bg,text_size=dSz)
+    0
+
+sum_row(int r,string name,array<int> s)=>
+    float w=win_rate(s.get(ST_W),s.get(ST_L))
+    dcell(0,r,name,dTxt,na)
+    dcell(1,r,str.tostring(s.get(ST_LS))+" ▲ / "+str.tostring(s.get(ST_SS))+" ▼",dTxt,na)
+    dcell(2,r,str.tostring(s.get(ST_E)),dTxt,na)
+    dcell(3,r,str.tostring(s.get(ST_W)),supCol,na)
+    dcell(4,r,str.tostring(s.get(ST_L)),resCol,na)
+    dcell(5,r,wr_txt(w),wr_col(w),na)
+    0
+
+day_row(int r,int d,string name,bool isToday)=>
+    float wk=win_rate(wkW.get(d),wkL.get(d))
+    float al=win_rate(alW.get(d),alL.get(d))
+    int alN=alW.get(d)+alL.get(d)
+    color bg=isToday?color.new(coreCol,80):na
+    dcell(0,r,(isToday?"▶ ":"")+name,isToday?coreCol:dTxt,bg)
+    dcell(1,r,str.tostring(wkE.get(d)),dTxt,bg)
+    dcell(2,r,str.tostring(wkW.get(d)),supCol,bg)
+    dcell(3,r,str.tostring(wkL.get(d)),resCol,bg)
+    dcell(4,r,wr_txt(wk),wr_col(wk),bg)
+    dcell(5,r,wr_txt(al)+(alN>0?" ("+str.tostring(alN)+")":""),wr_col(al),bg)
+    0
+
+if barstate.islast
+    table.clear(dash,0,0,5,14)
+    if showDash
+        // Title
+        dcell(0,0,"BUYERS & SELLERS · SIGNAL DASHBOARD",coreCol,dHdr)
+        table.merge_cells(dash,0,0,5,0)
+
+        // Summary: Today / This Week / All Time
+        dcell(0,1,"Period",dTxt,dHdr)
+        dcell(1,1,"Signals",dTxt,dHdr)
+        dcell(2,1,"Entries",dTxt,dHdr)
+        dcell(3,1,"W",dTxt,dHdr)
+        dcell(4,1,"L",dTxt,dHdr)
+        dcell(5,1,"Win %",dTxt,dHdr)
+        sum_row(2,"Today",stDay)
+        sum_row(3,"This Week",stWeek)
+        sum_row(4,"All Time",stAll)
+
+        // Weekday breakdown
+        dcell(0,5,"Day",dTxt,dHdr)
+        dcell(1,5,"Entries",dTxt,dHdr)
+        dcell(2,5,"W",dTxt,dHdr)
+        dcell(3,5,"L",dTxt,dHdr)
+        dcell(4,5,"Win % Wk",dTxt,dHdr)
+        dcell(5,5,"Win % All",dTxt,dHdr)
+        array<string> dNames=array.from("Mon","Tue","Wed","Thu","Fri","Sat","Sun")
+        for d=0 to 6
+            day_row(6+d,d,dNames.get(d),d==wdIdx)
+
+        // Open position
+        string posTxt=tDir==0?"Position: FLAT":(tDir>0?"Position: LONG":"Position: SHORT")+" @ "+str.tostring(tEntry,format.mintick)
+         +"   SL "+str.tostring(tSl,format.mintick)+"   TP "+str.tostring(tTp,format.mintick)
+        dcell(0,13,posTxt,tDir>0?supCol:tDir<0?resCol:dTxt,dHdr)
+        table.merge_cells(dash,0,13,5,13)
+
+        // Settings footer
+        dcell(0,14,sigMode+" · SL "+str.tostring(slAtr)+" ATR · TP "+str.tostring(tpAtr)+" ATR · "+dTz,color.gray,na)
+        table.merge_cells(dash,0,14,5,14)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Signal Alerts {
+alertcondition(longEntry,"Long entry","Long entry signal (Buyers & Sellers Profile dashboard).")
+alertcondition(shortEntry,"Short entry","Short entry signal (Buyers & Sellers Profile dashboard).")
+alertcondition(tradeWin,"Trade win","Open trade reached its target.")
+alertcondition(tradeLoss,"Trade loss","Open trade hit its stop.")
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
