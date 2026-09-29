@@ -19,17 +19,22 @@ strongest one that price just rejected:
 | Support hold | wick into the level, close back **above** it, bullish bar | **Long** |
 | Resistance hold | wick into the level, close back **below** it, bearish bar | **Short** |
 
-Filters that keep it clean: the level must score at least `Min Level Score`,
-only one trade may be open at a time (optional), and `Cooldown Bars` must have
-passed since the last signal.
+Filters that keep it clean:
+
+- the level must score at least `Min Level Score`
+- the signal bar must close within `Max Entry Distance ATR` of the level, so a
+  bounce that has already run is skipped rather than chased
+- only one trade may be open at a time (optional)
+- `Cooldown Bars` must have passed since the last signal
 
 ### Entry, stop and target
 
 - **Entry** — close of the signal bar, drawn as a dashed line.
 - **Stop** — beyond both the level and the signal bar extreme, plus
   `Stop Buffer ATR`. Drawn as a red zone from entry down to the stop.
-- **Target** — `Reward : Risk` × the risk distance. Drawn as a green zone from
-  entry up to the target.
+- **Target** — `Reward : Risk` × the risk distance, **1R by default**. A level
+  bounce reliably reaches one unit of risk; asking it for two was what produced
+  a 23% win rate in testing. Drawn as a green zone from entry to the target.
 - Signals whose stop would sit further than `Max Risk ATR` away are skipped.
 - Zones extend to the right while the trade is open and stop at the bar that
   closed it. The label reads `L ✓`, `S ✕` or `L –`; hover it for entry, stop,
@@ -74,8 +79,10 @@ Levels    Sup     6  Res   5
 | Position / Text Size | Top Right / Small | Table placement |
 | Day Rows | This Week | Scope of the weekday rows |
 | Week Start | Monday | Monday for equities/futures, Sunday for FX/crypto |
-| Reward : Risk | 2.0 | Target as a multiple of risk |
+| Reward : Risk | 1.0 | Target as a multiple of risk |
 | Min Level Score | 60 | Level quality gate |
+| Max Entry Distance ATR | 0.60 | Keeps entries tight to the level |
+| Stop Buffer ATR | 0.60 | Wide enough that wicks do not pick the stop off |
 | One Trade At A Time | on | Blocks overlapping trades |
 
 ### Notes
@@ -86,5 +93,17 @@ Levels    Sup     6  Res   5
 - Outcomes are a forward ATR target/stop simulation of the indicator's own
   signals — useful for comparing days and settings, not a substitute for a
   strategy backtest with costs and slippage.
+
+### Changed original defaults
+
+Two of the original indicator's default input **values** were changed to keep
+the chart readable. No calculation, level, drawing or alert was altered.
+
+| Input | Was | Now | Why |
+|---|---|---|---|
+| Max Levels | 20 | 6 | twenty simultaneous levels rendered as a wall of lines |
+| Min Score | 30 | 50 | weak levels were generating most of the clutter |
+
+Set them back to 20 and 30 for the original look.
 
 Original indicator © Zeiierman, CC BY-NC-SA 4.0.

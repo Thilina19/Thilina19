@@ -37,8 +37,8 @@ var string tt28="Show the current endpoint dot and one-number score label at the
 var string tt29="Master switch for the trade signal layer. Signals fire when price reacts to an existing profile-guided level, not when a level is created."
 var string tt30="Minimum level score required before a level is allowed to generate a trade signal. Raising this takes fewer, higher quality signals."
 var string tt31="How far price may wick through a level and still count as a touch, in ATR units. Larger values accept deeper pokes into the level."
-var string tt32="Extra distance placed beyond the level and beyond the signal bar extreme when the stop is set, in ATR units."
-var string tt33="Target distance as a multiple of the risk. 2.0 places the target twice as far from entry as the stop."
+var string tt32="Extra distance placed beyond the level and beyond the signal bar extreme when the stop is set, in ATR units. Wider values stop the stop being picked off by wicks."
+var string tt33="Target distance as a multiple of the risk. 1.0 places the target exactly as far from entry as the stop, which is what a level bounce realistically reaches."
 var string tt34="Maximum accepted risk in ATR units. Signals whose stop would sit further away than this are skipped."
 var string tt35="Block new signals while a trade is still open. Turning this off allows several trades to run at the same time."
 var string tt36="Minimum number of bars between two signals."
@@ -49,6 +49,7 @@ var string tt40="Small triangle under or above the signal bar at the moment a tr
 var string tt41="Statistics table with per-weekday trade counts, wins, losses and win rate, plus weekly and all-time totals. Table position and text size are set on the same line."
 var string tt42="Day rows scope. This Week shows only trades taken inside the current week. All History aggregates every trade on the chart by weekday."
 var string tt43="First day of the statistical week. Sunday suits 24/7 and FX symbols whose week opens on Sunday; Monday suits equities and futures."
+var string tt44="How far above a support, or below a resistance, the signal bar may close and still be taken, in ATR units. This is the filter that keeps entries tight to the level: a candle that closes far away has already made the move, so the bounce is skipped rather than chased."
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
 // ~~ Groups {
@@ -72,8 +73,8 @@ srchAtr=input.float(1.20,"Search ATR",minval=0.20,maxval=3.00,step=0.05,group=gE
 nodeMin=input.float(0.08,"Min Node",minval=0.0,maxval=1.0,step=0.01,group=gENG,inline="e2")
 evidMin=input.float(0.22,"Min Evidence",minval=0.0,maxval=1.0,step=0.01,group=gENG,inline="e2",tooltip=tt10+"\n\n"+tt11)
 pullMax=input.float(0.85,"Profile Pull",minval=0.0,maxval=1.0,step=0.05,group=gENG,inline="e3")
-scoreMin=input.float(30.0,"Min Score",minval=0,maxval=100,step=1,group=gENG,inline="e3",tooltip=tt12+"\n\n"+tt13)
-maxLvl=input.int(20,"Max Levels",minval=2,maxval=40,group=gENG,inline="e4")
+scoreMin=input.float(50.0,"Min Score",minval=0,maxval=100,step=1,group=gENG,inline="e3",tooltip=tt12+"\n\n"+tt13)
+maxLvl=input.int(6,"Max Levels",minval=2,maxval=40,group=gENG,inline="e4")
 mergeAtr=input.float(0.16,"Merge ATR",minval=0.0,maxval=1.0,step=0.02,group=gENG,inline="e4")
 breakAtr=input.float(0.10,"Break ATR",minval=0.0,maxval=0.5,step=0.01,group=gENG,inline="e4",tooltip=tt14+"\n\n"+tt15+"\n\n"+tt16)
 supCol=input.color(color.rgb(31,199,116),"Support",group=gSTY,inline="c1")
@@ -91,9 +92,10 @@ showEdge=input.bool(true,"Right Score",group=gSTY,inline="s2",tooltip=tt25+"\n\n
 showSig=input.bool(true,"Show Signals",group=gSIG,inline="g1")
 sigMinSc=input.float(60.0,"Min Level Score",minval=0,maxval=100,step=1,group=gSIG,inline="g1",tooltip=tt29+"\n\n"+tt30)
 touchAtr=input.float(0.10,"Touch ATR",minval=0.0,maxval=1.0,step=0.01,group=gSIG,inline="g2")
-slBufA=input.float(0.25,"Stop Buffer ATR",minval=0.0,maxval=3.0,step=0.05,group=gSIG,inline="g2",tooltip=tt31+"\n\n"+tt32)
-rrMult=input.float(2.0,"Reward : Risk",minval=0.5,maxval=10.0,step=0.1,group=gSIG,inline="g3")
+slBufA=input.float(0.60,"Stop Buffer ATR",minval=0.0,maxval=3.0,step=0.05,group=gSIG,inline="g2",tooltip=tt31+"\n\n"+tt32)
+rrMult=input.float(1.0,"Reward : Risk",minval=0.5,maxval=10.0,step=0.1,group=gSIG,inline="g3")
 maxRiskA=input.float(3.0,"Max Risk ATR",minval=0.5,maxval=10.0,step=0.1,group=gSIG,inline="g3",tooltip=tt33+"\n\n"+tt34)
+maxEntA=input.float(0.60,"Max Entry Distance ATR",minval=0.05,maxval=5.0,step=0.05,group=gSIG,inline="g7",tooltip=tt44)
 oneOpen=input.bool(true,"One Trade At A Time",group=gSIG,inline="g4")
 coolBars=input.int(10,"Cooldown Bars",minval=0,maxval=500,group=gSIG,inline="g4",tooltip=tt35+"\n\n"+tt36)
 maxHold=input.int(200,"Max Hold Bars",minval=5,maxval=2000,group=gSIG,inline="g5")
@@ -628,7 +630,7 @@ if barstate.isconfirmed and opn.size()>0
 
 if barstate.isconfirmed and ready
     [sSc,sP,sLong]=find_sig(lvls,atrV)
-    if sSc>0 and (not oneOpen or opn.size()==0) and bar_index-lastSigB>=coolBars
+    if sSc>0 and (not oneOpen or opn.size()==0) and bar_index-lastSigB>=coolBars and math.abs(close-sP)<=maxEntA*atrV
         float ent=close
         float stp=sLong?math.min(sP,low)-slBufA*atrV:math.max(sP,high)+slBufA*atrV
         float risk=math.abs(ent-stp)
