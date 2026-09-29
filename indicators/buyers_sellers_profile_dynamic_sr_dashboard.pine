@@ -34,18 +34,28 @@ var string tt25="Show the layered profile-confirmed pivot marker at the final re
 var string tt26="Show the faint raw pivot marker and dotted vertical guide connecting it to the final profile-guided level."
 var string tt27="Show the final 0-100 level score inside the historical profile-confirmed pivot marker."
 var string tt28="Show the current endpoint dot and one-number score label at the right edge of each active level."
-var string tt29="Statistics table with per-weekday entry counts, wins, losses and win rate, plus weekly and all-time totals. Table position and text size are set on the same line."
-var string tt30="Day rows scope. This Week shows only signals generated inside the current trading week. All History aggregates every signal on the chart by weekday."
-var string tt31="First day of the statistical week. Sunday suits 24/7 and FX symbols whose week opens on Sunday; Monday suits equities and futures."
-var string tt32="Target distance in ATR units from the signal bar close. A signal is scored as a win when this target is reached before the stop."
-var string tt33="Stop distance in ATR units from the signal bar close. If both target and stop are touched inside the same bar the signal is scored conservatively as a loss."
-var string tt34="Maximum bars a signal stays open. Signals that reach neither target nor stop inside this window expire and are excluded from the win rate while still counting as entries."
+var string tt29="Master switch for the trade signal layer. Signals fire when price reacts to an existing profile-guided level, not when a level is created."
+var string tt30="Minimum level score required before a level is allowed to generate a trade signal. Raising this takes fewer, higher quality signals."
+var string tt31="How far price may wick through a level and still count as a touch, in ATR units. Larger values accept deeper pokes into the level."
+var string tt32="Extra distance placed beyond the level and beyond the signal bar extreme when the stop is set, in ATR units."
+var string tt33="Target distance as a multiple of the risk. 2.0 places the target twice as far from entry as the stop."
+var string tt34="Maximum accepted risk in ATR units. Signals whose stop would sit further away than this are skipped."
+var string tt35="Block new signals while a trade is still open. Turning this off allows several trades to run at the same time."
+var string tt36="Minimum number of bars between two signals."
+var string tt37="Maximum bars a trade stays open. Trades that reach neither target nor stop inside this window expire and are excluded from the win rate."
+var string tt38="How many of the most recent trades keep their entry, stop and target zones drawn on the chart. Set to zero to draw none."
+var string tt39="Entry line, target zone and stop zone colors."
+var string tt40="Small triangle under or above the signal bar at the moment a trade is taken."
+var string tt41="Statistics table with per-weekday trade counts, wins, losses and win rate, plus weekly and all-time totals. Table position and text size are set on the same line."
+var string tt42="Day rows scope. This Week shows only trades taken inside the current week. All History aggregates every trade on the chart by weekday."
+var string tt43="First day of the statistical week. Sunday suits 24/7 and FX symbols whose week opens on Sunday; Monday suits equities and futures."
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
 // ~~ Groups {
 gPROF="Large Rolling Profile"
 gENG="Profile-Guided Pivot Engine"
 gSTY="Visual Style"
+gSIG="Trade Signals"
 gDASH="Dashboard"
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
@@ -78,14 +88,25 @@ showDots=input.bool(true,"Pivot Dots",group=gSTY,inline="s2")
 showRaw=input.bool(true,"Raw Pivot",group=gSTY,inline="s2",active=showDots)
 showDotScore=input.bool(true,"Dot Score",group=gSTY,inline="s2",active=showDots)
 showEdge=input.bool(true,"Right Score",group=gSTY,inline="s2",tooltip=tt25+"\n\n"+tt26+"\n\n"+tt27+"\n\n"+tt28)
+showSig=input.bool(true,"Show Signals",group=gSIG,inline="g1")
+sigMinSc=input.float(60.0,"Min Level Score",minval=0,maxval=100,step=1,group=gSIG,inline="g1",tooltip=tt29+"\n\n"+tt30)
+touchAtr=input.float(0.10,"Touch ATR",minval=0.0,maxval=1.0,step=0.01,group=gSIG,inline="g2")
+slBufA=input.float(0.25,"Stop Buffer ATR",minval=0.0,maxval=3.0,step=0.05,group=gSIG,inline="g2",tooltip=tt31+"\n\n"+tt32)
+rrMult=input.float(2.0,"Reward : Risk",minval=0.5,maxval=10.0,step=0.1,group=gSIG,inline="g3")
+maxRiskA=input.float(3.0,"Max Risk ATR",minval=0.5,maxval=10.0,step=0.1,group=gSIG,inline="g3",tooltip=tt33+"\n\n"+tt34)
+oneOpen=input.bool(true,"One Trade At A Time",group=gSIG,inline="g4")
+coolBars=input.int(10,"Cooldown Bars",minval=0,maxval=500,group=gSIG,inline="g4",tooltip=tt35+"\n\n"+tt36)
+maxHold=input.int(200,"Max Hold Bars",minval=5,maxval=2000,group=gSIG,inline="g5")
+drawLast=input.int(6,"Draw Last",minval=0,maxval=50,group=gSIG,inline="g5",tooltip=tt37+"\n\n"+tt38)
+entCol=input.color(color.rgb(222,226,235),"Entry",group=gSIG,inline="g6")
+tpCol=input.color(color.rgb(31,199,116),"Target",group=gSIG,inline="g6")
+slCol=input.color(color.rgb(239,75,75),"Stop",group=gSIG,inline="g6")
+showMk=input.bool(true,"Entry Markers",group=gSIG,inline="g6",tooltip=tt39+"\n\n"+tt40)
 showDash=input.bool(true,"Show Dashboard",group=gDASH,inline="d1")
 dashPos=input.string("Top Right","",options=["Top Right","Middle Right","Bottom Right","Top Left","Middle Left","Bottom Left","Top Center","Bottom Center"],group=gDASH,inline="d1",active=showDash)
-dashSize=input.string("Small","",options=["Tiny","Small","Normal"],group=gDASH,inline="d1",active=showDash,tooltip=tt29)
+dashSize=input.string("Small","",options=["Tiny","Small","Normal"],group=gDASH,inline="d1",active=showDash,tooltip=tt41)
 dayScope=input.string("This Week","Day Rows",options=["This Week","All History"],group=gDASH,inline="d2")
-weekStart=input.string("Monday","Week Start",options=["Monday","Sunday"],group=gDASH,inline="d2",tooltip=tt30+"\n\n"+tt31)
-tpAtrM=input.float(2.0,"Target ATR",minval=0.1,maxval=20.0,step=0.1,group=gDASH,inline="d3")
-slAtrM=input.float(1.0,"Stop ATR",minval=0.1,maxval=20.0,step=0.1,group=gDASH,inline="d3")
-maxHold=input.int(200,"Max Hold Bars",minval=5,maxval=2000,group=gDASH,inline="d4",tooltip=tt32+"\n\n"+tt33+"\n\n"+tt34)
+weekStart=input.string("Monday","Week Start",options=["Monday","Sunday"],group=gDASH,inline="d2",tooltip=tt42+"\n\n"+tt43)
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
 // ~~ Constants {
@@ -108,14 +129,17 @@ type Lvl
     int born
     line ln
 
-type Sig
+type Trd
     bool isLong
-    float entry
-    float tp
+    float ent
     float sl
+    float tp
+    float lvl
+    int b0
+    int b1
     int dow
     int wkId
-    int bar
+    int st
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
 // ~~ Helpers {
@@ -406,7 +430,7 @@ draw_profile(array<Lvl> a,array<box> bx,array<line> ln,array<label> lb)=>
     0
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
-// ~~ Dashboard Helpers {
+// ~~ Signal & Dashboard Helpers {
 dpos(string s)=>s=="Top Right"?position.top_right:s=="Middle Right"?position.middle_right:s=="Bottom Right"?position.bottom_right:
  s=="Top Left"?position.top_left:s=="Middle Left"?position.middle_left:s=="Bottom Left"?position.bottom_left:
  s=="Top Center"?position.top_center:position.bottom_center
@@ -423,9 +447,48 @@ bump(array<int> a,int i)=>
     0
 wrate(int w,int l)=>(w+l)>0?100.0*w/(w+l):na
 wr_txt(float x)=>na(x)?"—":str.tostring(x,"#.#")+"%"
-wr_col(float x)=>na(x)?color.new(chart.fg_color,92):x>=60?color.new(supCol,62):x>=50?color.new(supCol,80):
- x>=40?color.new(resCol,80):color.new(resCol,62)
+wr_col(float x)=>na(x)?color.new(chart.fg_color,92):x>=60?color.new(tpCol,62):x>=50?color.new(tpCol,80):
+ x>=40?color.new(slCol,80):color.new(slCol,62)
 n_txt(int n)=>n>0?str.tostring(n):"·"
+
+// Find the strongest active level that price just reacted to on this bar.
+// Support: wick into the level, close back above it on an up bar  -> long.
+// Resistance: wick into the level, close back below it on a down bar -> short.
+find_sig(array<Lvl> a,float atrV)=>
+    float bSc=0.0
+    float bP=na
+    bool bLong=false
+    float tol=atrV*touchAtr
+    if a.size()>0
+        for i=0 to a.size()-1
+            Lvl lv=a.get(i)
+            if lv.sc>=sigMinSc
+                bool hit=lv.supp?(low<=lv.p+tol and close>lv.p and close>open):(high>=lv.p-tol and close<lv.p and close<open)
+                if hit and lv.sc>bSc
+                    bSc:=lv.sc
+                    bP:=lv.p
+                    bLong:=lv.supp
+    [bSc,bP,bLong]
+
+trade_tip(Trd t)=>(t.isLong?"LONG":"SHORT")+"  from level "+str.tostring(t.lvl,format.mintick)
+ +"\nEntry:  "+str.tostring(t.ent,format.mintick)+"\nStop:   "+str.tostring(t.sl,format.mintick)
+ +"\nTarget: "+str.tostring(t.tp,format.mintick)+"\nRisk:   "+str.tostring(math.abs(t.ent-t.sl),format.mintick)
+ +"\nR : R   1 : "+str.tostring(rrMult,"#.#")
+ +"\nStatus: "+(t.st==1?"Target hit":t.st==2?"Stop hit":t.st==3?"Expired":"Open")
+
+draw_trade(Trd t,array<box> bx,array<line> ln,array<label> lb)=>
+    int x2=t.st==0?bar_index+6:t.b1
+    int fade=t.st==0?76:89
+    bx.push(box.new(t.b0,math.max(t.ent,t.tp),x2,math.min(t.ent,t.tp),xloc=xloc.bar_index,
+     border_color=color.new(tpCol,58),border_width=1,bgcolor=color.new(tpCol,fade)))
+    bx.push(box.new(t.b0,math.max(t.ent,t.sl),x2,math.min(t.ent,t.sl),xloc=xloc.bar_index,
+     border_color=color.new(slCol,58),border_width=1,bgcolor=color.new(slCol,fade)))
+    ln.push(line.new(t.b0,t.ent,x2,t.ent,xloc=xloc.bar_index,color=color.new(entCol,20),width=1,style=line.style_dashed))
+    color mc=t.st==1?tpCol:t.st==2?slCol:t.st==3?rawCol:entCol
+    string mk=t.st==1?" ✓":t.st==2?" ✕":t.st==3?" –":""
+    lb.push(label.new(x2,t.ent,(t.isLong?"L":"S")+mk,xloc=xloc.bar_index,yloc=yloc.price,style=label.style_label_left,
+     color=color.new(mc,88),textcolor=mc,size=size.tiny,tooltip=trade_tip(t)))
+    0
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
 // ~~ Core Series {
@@ -478,11 +541,12 @@ if barstate.islast
         draw_profile(lvls,pBx,tLn,pLb)
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
-// ~~ Signal Statistics Engine {
-// A signal is a newly stored profile-guided level: support = long, resistance = short.
-// Each signal is tracked forward with an ATR target and ATR stop and is scored as a
-// win, a loss or an expiry. Every outcome is tallied on the weekday of its entry bar.
-var array<Sig> opn=array.new<Sig>()
+// ~~ Trade Signal Engine {
+// A trade is taken when price reacts to an existing profile-guided level that is
+// strong enough. Stop sits beyond the level and the signal bar extreme, target is
+// a fixed multiple of that risk. Outcomes are tallied on the weekday of the entry.
+var array<Trd> opn=array.new<Trd>()
+var array<Trd> hist=array.new<Trd>()
 var array<int> aEnt=array.new_int(7,0)
 var array<int> aWin=array.new_int(7,0)
 var array<int> aLos=array.new_int(7,0)
@@ -492,20 +556,28 @@ var array<int> wLos=array.new_int(7,0)
 var array<int> pEnt=array.new_int(7,0)
 var array<int> pWin=array.new_int(7,0)
 var array<int> pLos=array.new_int(7,0)
+var array<box> sBx=array.new_box()
+var array<line> sLn=array.new_line()
+var array<label> sLb=array.new_label()
 var int wkId=0
 var int prevDow=-1
 var int aLong=0
 var int aShort=0
 var int wLong=0
 var int wShort=0
-var int pLong=0
-var int pShort=0
 var int aExp=0
-var int lastBar=na
+var int lastSigB=-100000
+var int lastB=na
 var bool lastLong=false
 var float lastPx=na
 
+bool fireLong=false
+bool fireShort=false
+bool tpHit=false
+bool slHit=false
+
 int dow=dow_id(dayofweek)
+float atrV=math.max(nz(atr,syminfo.mintick),syminfo.mintick)
 bool newDay=na(time[1]) or dayofmonth!=dayofmonth[1] or month!=month[1] or year!=year[1]
 
 if newDay
@@ -519,59 +591,80 @@ if newDay
                 wEnt.set(i,0)
                 wWin.set(i,0)
                 wLos.set(i,0)
-            pLong:=wLong
-            pShort:=wShort
             wLong:=0
             wShort:=0
     prevDow:=dow
 
 if barstate.isconfirmed and opn.size()>0
     for i=opn.size()-1 to 0
-        Sig s=opn.get(i)
-        if bar_index>s.bar
-            bool hitSl=s.isLong?low<=s.sl:high>=s.sl
-            bool hitTp=s.isLong?high>=s.tp:low<=s.tp
-            bool done=false
-            if hitSl
-                bump(aLos,s.dow)
-                if s.wkId==wkId
-                    bump(wLos,s.dow)
-                else if s.wkId==wkId-1
-                    bump(pLos,s.dow)
-                done:=true
-            else if hitTp
-                bump(aWin,s.dow)
-                if s.wkId==wkId
-                    bump(wWin,s.dow)
-                else if s.wkId==wkId-1
-                    bump(pWin,s.dow)
-                done:=true
-            else if bar_index-s.bar>=maxHold
-                aExp+=1
-                done:=true
-            if done
+        Trd t=opn.get(i)
+        if bar_index>t.b0
+            bool hSl=t.isLong?low<=t.sl:high>=t.sl
+            bool hTp=t.isLong?high>=t.tp:low<=t.tp
+            int res=hSl?2:hTp?1:bar_index-t.b0>=maxHold?3:0
+            if res>0
+                t.st:=res
+                t.b1:=bar_index
+                if res==1
+                    tpHit:=true
+                    bump(aWin,t.dow)
+                    if t.wkId==wkId
+                        bump(wWin,t.dow)
+                    else if t.wkId==wkId-1
+                        bump(pWin,t.dow)
+                else if res==2
+                    slHit:=true
+                    bump(aLos,t.dow)
+                    if t.wkId==wkId
+                        bump(wLos,t.dow)
+                    else if t.wkId==wkId-1
+                        bump(pLos,t.dow)
+                else
+                    aExp+=1
+                hist.push(t)
                 opn.remove(i)
+    while hist.size()>60
+        hist.shift()
 
-if barstate.isconfirmed and (newSup or newRes)
-    float sAtr=math.max(nz(atr,syminfo.mintick),syminfo.mintick)
-    if newSup
-        opn.push(Sig.new(true,close,close+sAtr*tpAtrM,close-sAtr*slAtrM,dow,wkId,bar_index))
-        bump(aEnt,dow)
-        bump(wEnt,dow)
-        aLong+=1
-        wLong+=1
-        lastBar:=bar_index
-        lastLong:=true
-        lastPx:=close
-    if newRes
-        opn.push(Sig.new(false,close,close-sAtr*tpAtrM,close+sAtr*slAtrM,dow,wkId,bar_index))
-        bump(aEnt,dow)
-        bump(wEnt,dow)
-        aShort+=1
-        wShort+=1
-        lastBar:=bar_index
-        lastLong:=false
-        lastPx:=close
+if barstate.isconfirmed and ready
+    [sSc,sP,sLong]=find_sig(lvls,atrV)
+    if sSc>0 and (not oneOpen or opn.size()==0) and bar_index-lastSigB>=coolBars
+        float ent=close
+        float stp=sLong?math.min(sP,low)-slBufA*atrV:math.max(sP,high)+slBufA*atrV
+        float risk=math.abs(ent-stp)
+        if risk>=syminfo.mintick and risk<=maxRiskA*atrV
+            opn.push(Trd.new(sLong,ent,stp,sLong?ent+rrMult*risk:ent-rrMult*risk,sP,bar_index,bar_index,dow,wkId,0))
+            bump(aEnt,dow)
+            bump(wEnt,dow)
+            if sLong
+                aLong+=1
+                wLong+=1
+                fireLong:=true
+            else
+                aShort+=1
+                wShort+=1
+                fireShort:=true
+            lastSigB:=bar_index
+            lastB:=bar_index
+            lastLong:=sLong
+            lastPx:=ent
+
+if barstate.islast
+    clear_boxes(sBx)
+    clear_lines(sLn)
+    clear_labels(sLb)
+    if showSig and drawLast>0
+        int n=hist.size()
+        int i0=n>drawLast?n-drawLast:0
+        if n>0
+            for i=i0 to n-1
+                draw_trade(hist.get(i),sBx,sLn,sLb)
+        if opn.size()>0
+            for i=0 to opn.size()-1
+                draw_trade(opn.get(i),sBx,sLn,sLb)
+
+plotshape(showSig and showMk and fireLong,"Long entry",shape.triangleup,location.belowbar,color=tpCol,size=size.tiny)
+plotshape(showSig and showMk and fireShort,"Short entry",shape.triangledown,location.abovebar,color=slCol,size=size.tiny)
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
 // ~~ Dashboard {
@@ -593,9 +686,9 @@ if showDash and barstate.islast
     table.cell(dash,4,0,timeframe.period,text_color=color.new(fg,35),text_size=dtxt(ts),bgcolor=hdBg)
 
     table.cell(dash,0,1,dayScope=="This Week"?"Week":"All",text_color=color.new(fg,25),text_size=dtxt(ts),bgcolor=hdBg,text_halign=text.align_left)
-    table.cell(dash,1,1,"Sig",text_color=color.new(fg,25),text_size=dtxt(ts),bgcolor=hdBg)
-    table.cell(dash,2,1,"W",text_color=color.new(supCol,10),text_size=dtxt(ts),bgcolor=hdBg)
-    table.cell(dash,3,1,"L",text_color=color.new(resCol,10),text_size=dtxt(ts),bgcolor=hdBg)
+    table.cell(dash,1,1,"Trd",text_color=color.new(fg,25),text_size=dtxt(ts),bgcolor=hdBg)
+    table.cell(dash,2,1,"W",text_color=color.new(tpCol,10),text_size=dtxt(ts),bgcolor=hdBg)
+    table.cell(dash,3,1,"L",text_color=color.new(slCol,10),text_size=dtxt(ts),bgcolor=hdBg)
     table.cell(dash,4,1,"Win%",text_color=color.new(fg,25),text_size=dtxt(ts),bgcolor=hdBg)
 
     for i=0 to 6
@@ -607,8 +700,8 @@ if showDash and barstate.islast
         color bg=i==dow?tdBg:rwBg
         table.cell(dash,0,r,dNm.get(i),text_color=i==dow?coreCol:fg,text_size=dtxt(ts),bgcolor=bg,text_halign=text.align_left)
         table.cell(dash,1,r,n_txt(e),text_color=fg,text_size=dtxt(ts),bgcolor=bg)
-        table.cell(dash,2,r,n_txt(w),text_color=supCol,text_size=dtxt(ts),bgcolor=bg)
-        table.cell(dash,3,r,n_txt(l),text_color=resCol,text_size=dtxt(ts),bgcolor=bg)
+        table.cell(dash,2,r,n_txt(w),text_color=tpCol,text_size=dtxt(ts),bgcolor=bg)
+        table.cell(dash,3,r,n_txt(l),text_color=slCol,text_size=dtxt(ts),bgcolor=bg)
         table.cell(dash,4,r,wr_txt(x),text_color=fg,text_size=dtxt(ts),bgcolor=wr_col(x))
 
     int weT=isum(wEnt)
@@ -626,42 +719,40 @@ if showDash and barstate.islast
 
     table.cell(dash,0,9,"This Week",text_color=fg,text_size=dtxt(ts),bgcolor=hdBg,text_halign=text.align_left)
     table.cell(dash,1,9,n_txt(weT),text_color=fg,text_size=dtxt(ts),bgcolor=hdBg)
-    table.cell(dash,2,9,n_txt(wwT),text_color=supCol,text_size=dtxt(ts),bgcolor=hdBg)
-    table.cell(dash,3,9,n_txt(wlT),text_color=resCol,text_size=dtxt(ts),bgcolor=hdBg)
+    table.cell(dash,2,9,n_txt(wwT),text_color=tpCol,text_size=dtxt(ts),bgcolor=hdBg)
+    table.cell(dash,3,9,n_txt(wlT),text_color=slCol,text_size=dtxt(ts),bgcolor=hdBg)
     table.cell(dash,4,9,wr_txt(wWr),text_color=fg,text_size=dtxt(ts),bgcolor=wr_col(wWr))
 
     table.cell(dash,0,10,"Last Week",text_color=color.new(fg,25),text_size=dtxt(ts),bgcolor=rwBg,text_halign=text.align_left)
     table.cell(dash,1,10,n_txt(peT),text_color=fg,text_size=dtxt(ts),bgcolor=rwBg)
-    table.cell(dash,2,10,n_txt(pwT),text_color=supCol,text_size=dtxt(ts),bgcolor=rwBg)
-    table.cell(dash,3,10,n_txt(plT),text_color=resCol,text_size=dtxt(ts),bgcolor=rwBg)
+    table.cell(dash,2,10,n_txt(pwT),text_color=tpCol,text_size=dtxt(ts),bgcolor=rwBg)
+    table.cell(dash,3,10,n_txt(plT),text_color=slCol,text_size=dtxt(ts),bgcolor=rwBg)
     table.cell(dash,4,10,wr_txt(pWr),text_color=fg,text_size=dtxt(ts),bgcolor=wr_col(pWr))
 
     table.cell(dash,0,11,"All Time",text_color=fg,text_size=dtxt(ts),bgcolor=hdBg,text_halign=text.align_left)
     table.cell(dash,1,11,n_txt(aeT),text_color=fg,text_size=dtxt(ts),bgcolor=hdBg)
-    table.cell(dash,2,11,n_txt(awT),text_color=supCol,text_size=dtxt(ts),bgcolor=hdBg)
-    table.cell(dash,3,11,n_txt(alT),text_color=resCol,text_size=dtxt(ts),bgcolor=hdBg)
+    table.cell(dash,2,11,n_txt(awT),text_color=tpCol,text_size=dtxt(ts),bgcolor=hdBg)
+    table.cell(dash,3,11,n_txt(alT),text_color=slCol,text_size=dtxt(ts),bgcolor=hdBg)
     table.cell(dash,4,11,wr_txt(aWr),text_color=fg,text_size=dtxt(ts),bgcolor=wr_col(aWr))
 
     table.cell(dash,0,12,"Signals",text_color=color.new(fg,25),text_size=dtxt(ts),bgcolor=hdBg,text_halign=text.align_left)
-    table.cell(dash,1,12,"Long",text_color=color.new(supCol,10),text_size=dtxt(ts),bgcolor=hdBg)
-    table.cell(dash,2,12,"Short",text_color=color.new(resCol,10),text_size=dtxt(ts),bgcolor=hdBg)
+    table.cell(dash,1,12,"Long",text_color=color.new(tpCol,10),text_size=dtxt(ts),bgcolor=hdBg)
+    table.cell(dash,2,12,"Short",text_color=color.new(slCol,10),text_size=dtxt(ts),bgcolor=hdBg)
     table.cell(dash,3,12,"Open",text_color=color.new(fg,25),text_size=dtxt(ts),bgcolor=hdBg)
     table.cell(dash,4,12,"Exp",text_color=color.new(fg,25),text_size=dtxt(ts),bgcolor=hdBg)
 
-    int sLong=dayScope=="This Week"?wLong:aLong
-    int sShort=dayScope=="This Week"?wShort:aShort
     table.cell(dash,0,13,dayScope=="This Week"?"Week":"All",text_color=fg,text_size=dtxt(ts),bgcolor=rwBg,text_halign=text.align_left)
-    table.cell(dash,1,13,n_txt(sLong),text_color=supCol,text_size=dtxt(ts),bgcolor=rwBg)
-    table.cell(dash,2,13,n_txt(sShort),text_color=resCol,text_size=dtxt(ts),bgcolor=rwBg)
+    table.cell(dash,1,13,n_txt(dayScope=="This Week"?wLong:aLong),text_color=tpCol,text_size=dtxt(ts),bgcolor=rwBg)
+    table.cell(dash,2,13,n_txt(dayScope=="This Week"?wShort:aShort),text_color=slCol,text_size=dtxt(ts),bgcolor=rwBg)
     table.cell(dash,3,13,n_txt(opn.size()),text_color=fg,text_size=dtxt(ts),bgcolor=rwBg)
     table.cell(dash,4,13,n_txt(aExp),text_color=color.new(fg,35),text_size=dtxt(ts),bgcolor=rwBg)
 
     table.cell(dash,0,14,"Last",text_color=color.new(fg,25),text_size=dtxt(ts),bgcolor=rwBg,text_halign=text.align_left)
-    table.cell(dash,1,14,na(lastBar)?"—":lastLong?"Long":"Short",text_color=na(lastBar)?fg:lastLong?supCol:resCol,
+    table.cell(dash,1,14,na(lastB)?"—":lastLong?"Long":"Short",text_color=na(lastB)?fg:lastLong?tpCol:slCol,
      text_size=dtxt(ts),bgcolor=rwBg)
     table.cell(dash,2,14,na(lastPx)?"—":str.tostring(lastPx,format.mintick),text_color=fg,text_size=dtxt(ts),bgcolor=rwBg)
     table.cell(dash,3,14,"ago",text_color=color.new(fg,45),text_size=dtxt(ts),bgcolor=rwBg)
-    table.cell(dash,4,14,na(lastBar)?"—":str.tostring(bar_index-lastBar),text_color=fg,text_size=dtxt(ts),bgcolor=rwBg)
+    table.cell(dash,4,14,na(lastB)?"—":str.tostring(bar_index-lastB),text_color=fg,text_size=dtxt(ts),bgcolor=rwBg)
 
     int sCnt=0
     int rCnt=0
@@ -683,4 +774,8 @@ alertcondition(newSup,"New profile-confirmed support","A structural pivot low wa
 alertcondition(newRes,"New profile-confirmed resistance","A structural pivot high was confirmed by the large rolling volume profile and converted into resistance.")
 alertcondition(supBreak,"Support broken","An active profile-guided support was broken on a confirmed close.")
 alertcondition(resBreak,"Resistance broken","An active profile-guided resistance was broken on a confirmed close.")
+alertcondition(fireLong,"Long signal","Price reacted to a profile-guided support level and a long trade was taken.")
+alertcondition(fireShort,"Short signal","Price reacted to a profile-guided resistance level and a short trade was taken.")
+alertcondition(tpHit,"Target hit","An open trade reached its target.")
+alertcondition(slHit,"Stop hit","An open trade reached its stop.")
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}

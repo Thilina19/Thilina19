@@ -10,29 +10,32 @@ dashboard is additive and can be switched off with a single toggle.
 
 ### What counts as a signal
 
-A signal is fired when the profile engine stores a **new** profile-guided
-level — exactly the same events that drive the existing alerts:
+A signal is a **reaction to an existing level**, not the creation of one. On a
+closed bar the engine scans the active profile-guided levels and takes the
+strongest one that price just rejected:
 
-| Event | Direction |
-|---|---|
-| New profile-confirmed **support** | Long |
-| New profile-confirmed **resistance** | Short |
+| Setup | Condition | Trade |
+|---|---|---|
+| Support hold | wick into the level, close back **above** it, bullish bar | **Long** |
+| Resistance hold | wick into the level, close back **below** it, bearish bar | **Short** |
 
-Signals are only tallied on a **closed** bar, so counts never flicker on the
-forming candle.
+Filters that keep it clean: the level must score at least `Min Level Score`,
+only one trade may be open at a time (optional), and `Cooldown Bars` must have
+passed since the last signal.
 
-### How win / loss is decided
+### Entry, stop and target
 
-Each signal is tracked forward from the close of its confirmation bar:
+- **Entry** — close of the signal bar, drawn as a dashed line.
+- **Stop** — beyond both the level and the signal bar extreme, plus
+  `Stop Buffer ATR`. Drawn as a red zone from entry down to the stop.
+- **Target** — `Reward : Risk` × the risk distance. Drawn as a green zone from
+  entry up to the target.
+- Signals whose stop would sit further than `Max Risk ATR` away are skipped.
+- Zones extend to the right while the trade is open and stop at the bar that
+  closed it. The label reads `L ✓`, `S ✕` or `L –`; hover it for entry, stop,
+  target, risk and status.
 
-- **Target** = `Target ATR` × ATR(14) in the signal's direction → **Win**
-- **Stop** = `Stop ATR` × ATR(14) against it → **Loss**
-- Neither reached within `Max Hold Bars` → **Expired** (counts as an entry,
-  excluded from win rate)
-- Both touched inside the same bar → scored conservatively as a **Loss**
-
-Every outcome is tallied against the **weekday of the entry bar**, so a signal
-taken on Tuesday that resolves on Thursday still counts toward Tuesday.
+Only the last `Draw Last` trades stay drawn, so the chart never fills up.
 
 ### Dashboard layout
 
@@ -71,9 +74,9 @@ Levels    Sup     6  Res   5
 | Position / Text Size | Top Right / Small | Table placement |
 | Day Rows | This Week | Scope of the weekday rows |
 | Week Start | Monday | Monday for equities/futures, Sunday for FX/crypto |
-| Target ATR | 2.0 | Win distance |
-| Stop ATR | 1.0 | Loss distance |
-| Max Hold Bars | 200 | Expiry window |
+| Reward : Risk | 2.0 | Target as a multiple of risk |
+| Min Level Score | 60 | Level quality gate |
+| One Trade At A Time | on | Blocks overlapping trades |
 
 ### Notes
 
