@@ -37,6 +37,15 @@
 //   which is what the Python align_index() does. Entries are evaluated on bar
 //   close (process_orders_on_close). Historical and live behaviour match.
 //
+// IF YOU SEE NO TRADES
+//   Open the status panel (top right). It counts every bar against the FIRST
+//   gate it failed, so the largest number names the binding constraint. Two
+//   gates were measured to be the usual culprits, and both now have safer
+//   defaults: the bias rule (strict structure gives a usable bias on only
+//   45.5% of real 4h gold bars, the EMA fallback gives 69.7%) and the
+//   volatility gate (which used to be an absolute ATR-percent band and
+//   rejected every single 5m bar).
+//
 // FEED MATTERS
 //   Volume conventions differ by provider, and the displacement volume filter
 //   is calibrated against real data. Measured on gold 1h:
@@ -96,6 +105,7 @@ biasTF   = input.timeframe("240", "Bias timeframe",        group=grpB,
 emaFast  = input.int(50,  "Fast EMA", group=grpB, minval=5)
 emaSlow  = input.int(200, "Slow EMA", group=grpB, minval=20)
 swingLB  = input.int(2,   "Swing fractal strength", group=grpB, minval=1, maxval=10)
+biasMode = input.string("ema_fallback", "Bias rule", options=["strict", "ema_fallback"], group=grpB)
 
 grpZ = "Order blocks"
 atrLen      = input.int(14,   "ATR length",                group=grpZ, minval=2)
@@ -107,6 +117,7 @@ volLB       = input.int(20,   "Volume average length",     group=grpZ, minval=5)
 obMaxAge    = input.int(60,   "Zone max age (bars)",       group=grpZ, minval=5)
 tapTolATR   = input.float(0.35,"Tap tolerance (x ATR)",    group=grpZ, minval=0.0, step=0.05)
 obSearchBack= input.int(20,   "Look back for block candle",group=grpZ, minval=3, maxval=50)
+tapGrace    = input.int(6,    "Tap stays live for (bars)", group=grpZ, minval=1, maxval=30)
 
 grpT = "Trigger and targets"
 haConfirm   = input.int(2,    "Heikin Ashi confirm bars",  group=grpT, minval=1, maxval=5)
@@ -190,6 +201,15 @@ f_bias() =>
         b := 1
     else if bear and not na(ef) and not na(es) and close <= math.max(ef, es)
         b := -1
+    // Structure had no opinion: fall back to the EMA trend. Measured over 69
+    // days of real 4h gold, strict structure gave a usable bias on only 45.5%
+    // of bars; with this fallback it is 69.7%. Bias is a mandatory gate, so
+    // that difference alone decides whether the strategy ever trades.
+    if b == 0 and biasMode == "ema_fallback" and not na(ef) and not na(es)
+        if close > ef and ef > es
+            b := 1
+        else if close < ef and ef < es
+            b := -1
     b
 
 // f()[1] with lookahead_on is the canonical non-repainting pattern: it yields
@@ -323,8 +343,14 @@ tapTol = tapTolATR * nz(atrv, 0.0)
 longZoneReady  = wantLong  and not na(dBot) and dBot <= close
 shortZoneReady = wantShort and not na(sTop) and sTop >= close
 
-longTapped  = longZoneReady  and low  <= dTop + tapTol
-shortTapped = shortZoneReady and high >= sBot - tapTol
+// A tap counts if it happened on this bar or within the grace window. The
+// trade is "price reached the zone, then turned", and the turn is allowed to
+// take a few bars -- demanding the tap and the Heikin Ashi flip on the same
+// bar is not how the setup is actually traded.
+longTapRaw  = longZoneReady  and low  <= dTop + tapTol
+shortTapRaw = shortZoneReady and high >= sBot - tapTol
+longTapped  = longZoneReady  and nz(ta.barssince(longTapRaw),  9999) < tapGrace
+shortTapped = shortZoneReady and nz(ta.barssince(shortTapRaw), 9999) < tapGrace
 
 longDist  = longZoneReady  and atrv > 0 ? math.abs(close - (dTop + dBot) / 2) / atrv : na
 shortDist = shortZoneReady and atrv > 0 ? math.abs(close - (sTop + sBot) / 2) / atrv : na

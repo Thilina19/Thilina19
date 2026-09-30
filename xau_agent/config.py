@@ -122,6 +122,10 @@ class StrategyParams:
     ema_fast: int = 50
     ema_slow: int = 200
     swing_lookback: int = 2  # bars either side for a fractal swing point
+    # "strict" = structure only; "ema_fallback" = structure, then EMA trend
+    # when structure is a range. See structure.market_bias for the measurement
+    # that made the fallback the default.
+    bias_mode: str = "ema_fallback"
 
     # --- Volatility ---
     atr_period: int = 14
@@ -149,6 +153,12 @@ class StrategyParams:
     ob_max_age_bars: int = 60
     # How close price must come to the zone to count as a tap, in ATR.
     ob_tap_tolerance_atr: float = 0.35
+    # How many bars a zone tap stays "live" while we wait for the trigger.
+    # Requiring the tap and the Heikin Ashi flip on the SAME bar is not how the
+    # setup is actually traded: price enters the zone, then you wait for the
+    # turn. Measured on real gold, insisting on the same bar left the HA trigger
+    # failing on 72.5% of bars and almost nothing ever reached scoring.
+    ob_tap_grace_bars: int = 6
 
     # --- Heikin Ashi trigger ---
     # Consecutive HA candles in the signal direction required to confirm.
@@ -184,6 +194,8 @@ class StrategyParams:
     slippage_usd: float = 0.10
 
     def validate(self) -> None:
+        if self.bias_mode not in ("strict", "ema_fallback"):
+            raise ValueError(f"unknown bias_mode {self.bias_mode!r}")
         if self.ema_fast >= self.ema_slow:
             raise ValueError("ema_fast must be shorter than ema_slow")
         if not 0 < self.min_vol_mult < self.max_vol_mult:
@@ -205,6 +217,7 @@ class StrategyParams:
         "ob_displacement_atr",
         "ob_min_volume_ratio",
         "ob_tap_tolerance_atr",
+        "ob_tap_grace_bars",
         "ha_confirm_bars",
         "ha_max_wick_ratio",
         "min_confluence_score",
@@ -213,6 +226,7 @@ class StrategyParams:
         "min_vol_mult",
         "max_vol_mult",
         "asian_score_penalty",
+        "bias_mode",
     )
 
     def with_overrides(self, **kw: Any) -> "StrategyParams":

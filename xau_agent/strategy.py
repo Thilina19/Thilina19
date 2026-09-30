@@ -202,6 +202,7 @@ class Strategy:
         struct: StructureState = market_bias(
             bias_view.bars, bias_idx,
             ema_fast=p.ema_fast, ema_slow=p.ema_slow, lookback=p.swing_lookback,
+            mode=p.bias_mode,
         )
         if struct.bias is Bias.NONE:
             items.append(ScoreItem("htf_bias", 0, 25, False, struct.reason))
@@ -246,7 +247,17 @@ class Strategy:
 
         # ------------------------------------------------ 3. price at zone (15)
         tol = p.ob_tap_tolerance_atr * a
-        at_zone = block.contains(bar.l if side is Side.LONG else bar.h, tol)
+        # A tap counts if it happened on this bar or within the grace window,
+        # because the trade is "price reached the zone, then turned" -- the turn
+        # is allowed to take a few bars.
+        lo = max(0, entry_idx - p.ob_tap_grace_bars + 1)
+        at_zone = any(
+            block.contains(
+                entry_view.bars[j].l if side is Side.LONG else entry_view.bars[j].h,
+                tol,
+            )
+            for j in range(lo, entry_idx + 1)
+        )
         dist = abs(bar.c - block.mid)
         if at_zone:
             zone_pts = 15

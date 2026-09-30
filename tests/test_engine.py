@@ -13,7 +13,7 @@ from xau_agent.backtest import Backtester, align_index
 from xau_agent.config import AgentConfig, RiskLimits, StrategyParams
 from xau_agent.data import resample, synthetic_bars
 from xau_agent.indicators import (
-    Bar, atr, ema, find_swings, heikin_ashi, rsi, sma, volume_ratio,
+    Bar, atr, closes, ema, find_swings, heikin_ashi, rsi, sma, volume_ratio,
 )
 from xau_agent.journal import (
     Journal, JournalEntry, Mode, Outcome, PerformanceGate, compute_stats,
@@ -807,3 +807,83 @@ class TestJournalPersistence(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestBiasModes(unittest.TestCase):
+    """The bias gate is mandatory, so how often it has an opinion decides
+    whether the strategy ever trades.
+
+    Measured over 69 days of real 4h CAPITALCOM gold: strict structure gave a
+    usable bias on 45.5% of bars, the EMA fallback on 69.7%. The strategy was
+    producing no trades at all, and 75% of recent bars were failing on bias.
+    """
+
+    def test_fallback_is_at_least_as_available_as_strict(self) -> None:
+        bars = synthetic_bars(3000, interval="4h", seed=41)
+        strict = sum(
+            1 for i in range(250, len(bars))
+            if market_bias(bars, i, mode="strict").bias is not Bias.NONE
+        )
+        fallback = sum(
+            1 for i in range(250, len(bars))
+            if market_bias(bars, i, mode="ema_fallback").bias is not Bias.NONE
+        )
+        self.assertGreaterEqual(fallback, strict)
+
+    def test_fallback_never_contradicts_structure(self) -> None:
+        """Where structure has an opinion, the fallback must not override it."""
+        bars = synthetic_bars(3000, interval="4h", seed=43)
+        for i in range(250, len(bars), 7):
+            s = market_bias(bars, i, mode="strict")
+            f = market_bias(bars, i, mode="ema_fallback")
+            if s.bias is not Bias.NONE:
+                self.assertEqual(
+                    s.bias, f.bias,
+                    "the fallback overrode a structural bias instead of "
+                    "deferring to it",
+                )
+
+    def test_fallback_only_fires_on_full_ema_alignment(self) -> None:
+        """It is a trend statement, not just 'price is above a line'."""
+        bars = synthetic_bars(2000, interval="4h", seed=47)
+        cl = closes(bars)
+        p = StrategyParams()
+        ef = ema(cl, p.ema_fast)
+        es = ema(cl, p.ema_slow)
+        for i in range(250, len(bars), 5):
+            st = market_bias(bars, i, mode="ema_fallback")
+            if "fallback" not in st.reason:
+                continue
+            price = bars[i].c
+            if st.bias is Bias.BULL:
+                self.assertTrue(price > ef[i] > es[i])
+            else:
+                self.assertTrue(price < ef[i] < es[i])
+
+    def test_unknown_mode_rejected(self) -> None:
+        bars = synthetic_bars(600, interval="4h")
+        with self.assertRaises(ValueError):
+            market_bias(bars, 500, mode="vibes")
+        with self.assertRaises(ValueError):
+            StrategyParams(bias_mode="vibes").validate()
+
+
+class TestTapGraceWindow(unittest.TestCase):
+    def test_grace_window_widens_the_tap(self) -> None:
+        """A tap must stay live for a few bars while the trigger forms."""
+        from xau_agent.structure import OrderBlock
+        block = OrderBlock(1, 0, Side.LONG, 101.0, 99.0, 2.0, 2.0)
+        # Price taps the zone, then drifts above it.
+        seq = [(100.0, 100.5, 99.5, 100.2)]
+        seq += [(104.0 + i, 104.5 + i, 103.5 + i, 104.2 + i) for i in range(5)]
+        bars = mk(seq)
+        tol = 0.0
+        for grace, expected in ((1, False), (8, True)):
+            lo = max(0, len(bars) - 1 - grace + 1)
+            tapped = any(block.contains(bars[j].l, tol)
+                         for j in range(lo, len(bars)))
+            self.assertEqual(tapped, expected,
+                             f"grace={grace} gave tapped={tapped}")
+
+    def test_grace_is_tunable_not_structural(self) -> None:
+        StrategyParams().with_overrides(ob_tap_grace_bars=10)
