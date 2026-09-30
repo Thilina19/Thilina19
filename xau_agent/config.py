@@ -108,7 +108,12 @@ class StrategyParams:
       entry_tf   -- 15m, times the Heikin Ashi trigger.
     """
 
-    symbol: str = "OANDA:XAUUSD"
+    # CAPITALCOM is the feed this account actually charts and alerts on, so it
+    # is the default: backtesting on one provider's data while being filled on
+    # another's is a quiet source of optimism. Verify any new feed first with
+    # `python3 -m xau_agent.cli calibrate` -- volume conventions differ enough
+    # between providers to disable the order-block filter entirely.
+    symbol: str = "CAPITALCOM:XAUUSD"
     bias_tf: str = "4h"
     zone_tf: str = "1h"
     entry_tf: str = "15m"

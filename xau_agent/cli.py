@@ -231,6 +231,164 @@ def cmd_log_trade(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    """Measure a feed's displacement and volume distributions.
+
+    Run this on any new symbol or broker feed BEFORE trusting the thresholds.
+    Volume is reported differently by every provider, and a feed whose volume is
+    smoothed has little dispersion -- on such a feed the volume filter never
+    triggers, no order blocks are found, and the system silently reports no
+    setups forever. That failure looks exactly like discipline.
+
+    Reference, measured on real gold 1h data:
+        OANDA       volume ratio p90 1.90, max 6.53, 20.6% clear 1.4x
+        CAPITALCOM  volume ratio p90 1.54, max 2.14, 16.7% clear 1.4x
+    """
+    from .indicators import atr as _atr, volume_ratio as _vr
+    from .structure import find_order_blocks
+
+    bars = _load(args.entry)
+    if len(bars) < 60:
+        raise SystemExit("need at least 60 bars to say anything useful")
+    p = _config(args).strategy
+
+    a = _atr(bars, p.atr_period)
+    vr = _vr(bars, p.ob_volume_lookback)
+    disp = [bars[i].body / a[i] for i in range(len(bars)) if a[i]]
+    vols = [v for v in vr if v]
+    atrp = [a[i] / bars[i].c * 100 for i in range(len(bars)) if a[i]]
+
+    def q(xs: list[float], f: float) -> float:
+        return sorted(xs)[min(len(xs) - 1, int(len(xs) * f))]
+
+    print(describe(bars, "feed"))
+    print()
+    print(f"displacement (body / ATR)")
+    print(f"  median {q(disp, .5):.2f}   p90 {q(disp, .9):.2f}   "
+          f"p99 {q(disp, .99):.2f}   max {max(disp):.2f}")
+    for th in (0.8, 1.0, 1.3, 1.5, 2.0):
+        share = 100 * sum(1 for x in disp if x >= th) / len(disp)
+        mark = "  <- configured" if abs(th - p.ob_displacement_atr) < 0.01 else ""
+        print(f"   >= {th:.1f} ATR : {share:5.1f}% of bars{mark}")
+
+    print()
+    print(f"volume ratio (bar volume / {p.ob_volume_lookback}-bar average)")
+    print(f"  mean {sum(vols) / len(vols):.2f}   median {q(vols, .5):.2f}   "
+          f"p90 {q(vols, .9):.2f}   max {max(vols):.2f}")
+    for th in (1.2, 1.4, 1.8, 2.5):
+        share = 100 * sum(1 for x in vols if x >= th) / len(vols)
+        mark = "  <- configured" if abs(th - p.ob_min_volume_ratio) < 0.01 else ""
+        print(f"   >= {th:.1f}x    : {share:5.1f}% of bars{mark}")
+
+    print()
+    print(f"ATR as % of price: median {q(atrp, .5):.3f}%  "
+          f"min {min(atrp):.3f}%  max {max(atrp):.3f}%")
+    print(f"   configured band {p.min_atr_pct * 100:.3f}% - {p.max_atr_pct * 100:.3f}%")
+    outside = sum(1 for x in atrp
+                  if x < p.min_atr_pct * 100 or x > p.max_atr_pct * 100)
+    print(f"   {100 * outside / len(atrp):.1f}% of bars fall outside it "
+          f"(those are skipped)")
+
+    blocks = find_order_blocks(
+        bars, len(bars) - 1, atr_values=a, vol_ratios=vr,
+        displacement_atr=p.ob_displacement_atr,
+        min_volume_ratio=p.ob_min_volume_ratio,
+        volume_lookback=p.ob_volume_lookback,
+        max_age_bars=max(p.ob_max_age_bars, len(bars) - 10),
+    )
+    live = [b for b in blocks if not b.mitigated]
+    print()
+    print(f"order blocks at current settings: {len(blocks)} found, "
+          f"{len(live)} still valid")
+    if blocks:
+        per = len(bars) / len(blocks)
+        print(f"   about one zone every {per:.0f} bars")
+
+    print()
+    if not blocks:
+        print("VERDICT: no zones found. The thresholds are too strict for this "
+              "feed, or\n  its volume is too smoothed to carry the filter. Lower "
+              "--min-vol-ratio\n  toward the p90 above before trusting any result.")
+        return 1
+    if max(vols) < p.ob_min_volume_ratio * 1.2:
+        print(f"WARNING: the highest volume ratio in this sample is only "
+              f"{max(vols):.2f}, barely\n  above the {p.ob_min_volume_ratio:.2f} "
+              f"threshold. This feed's volume is smoothed;\n  raising the "
+              f"threshold further will silence the system entirely.")
+    else:
+        print("VERDICT: thresholds are usable on this feed.")
+    return 0
+
+
+def cmd_export_pine(args: argparse.Namespace) -> int:
+    """Generate a Pine overlay drawing the journalled signals."""
+    from .pine_export import MAX_TRADES, write_pine
+
+    with Journal(args.db) as j:
+        trades = j.trades(mode=args.mode, closed_only=False)
+    if not trades:
+        print("The journal is empty, so there is nothing to draw.")
+        print("Log trades first:  python3 -m xau_agent.cli log-trade --help")
+        print(f"\nFor the logic overlay instead, use pine/xau_agent_strategy.pine "
+              f"-- it recomputes across all history and needs no journal.")
+        return 1
+
+    path, drawn = write_pine(trades, args.out, symbol_note=args.symbol)
+    print(f"wrote {path}  ({drawn} of {len(trades)} trades drawn)")
+    if len(trades) > MAX_TRADES:
+        print(f"  TradingView caps drawings at 500 per type, so only the newest "
+              f"{MAX_TRADES} are included.")
+    print("\nNext: open the symbol in TradingView, Pine Editor -> paste the file "
+          "-> Save -> Add to chart.")
+    return 0
+
+
+def cmd_alert_levels(args: argparse.Namespace) -> int:
+    """Print the alert levels for the current setup, ready to create.
+
+    TradingView's MCP interface only accepts simple price conditions -- no
+    indicator alerts and no webhooks -- so a signal becomes three price alerts:
+    one at the entry, one at the stop, one at the target.
+    """
+    cfg = _config(args)
+    entry, zone, bias = _series(args)
+    try:
+        check_data_sufficiency(entry, zone, bias, cfg)
+    except InsufficientData as e:
+        print(f"CANNOT ANALYSE\n{e}")
+        return 2
+
+    strat = Strategy(cfg.strategy)
+    ev = MarketView.build(entry, cfg.strategy)
+    zv = MarketView.build(zone, cfg.strategy)
+    bv = MarketView.build(bias, cfg.strategy)
+    i = len(entry) - 1
+    out = strat.evaluate(
+        entry_view=ev, entry_idx=i,
+        bias_view=bv, bias_idx=align_index([b.t for b in bias], entry[i].t),
+        zone_view=zv, zone_idx=align_index([b.t for b in zone], entry[i].t),
+    )
+    if isinstance(out, Rejection):
+        print(f"No setup, so no alerts to set: {out.reason}")
+        return 0
+
+    rm = RiskManager(cfg.risk)
+    size = rm.size_position(out.entry, out.stop)
+    print(f"{out.side.value.upper()} setup, score {out.score}/100\n")
+    print("Create these three price alerts:")
+    print(f"  1. ENTRY  {out.entry:.2f}   condition: "
+          f"{'cross_down' if out.side is Side.LONG else 'cross_up'}")
+    print(f"  2. STOP   {out.stop:.2f}   condition: "
+          f"{'cross_down' if out.side is Side.LONG else 'cross_up'}")
+    print(f"  3. TP2    {out.tp2:.2f}   condition: "
+          f"{'cross_up' if out.side is Side.LONG else 'cross_down'}")
+    if size:
+        print(f"\nsize {size.lots:.2f} lots ({size.ounces:.0f} oz), "
+              f"risking ${size.risk_dollars:.2f}")
+    print("\nAsk Claude to create them, or add them on tradingview.com.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="xau_agent",
@@ -288,6 +446,26 @@ def build_parser() -> argparse.ArgumentParser:
     lt.add_argument("--time", help="signal time in ISO format")
     lt.add_argument("--notes", default="")
     lt.set_defaults(func=cmd_log_trade)
+
+    ep = sub.add_parser("export-pine",
+                        help="draw the journalled signals on a TradingView chart")
+    ep.add_argument("--out", default="pine/xau_agent_journal.pine")
+    ep.add_argument("--mode", choices=[m.value for m in Mode],
+                    help="only export this mode (default: all)")
+    ep.add_argument("--symbol", default="CAPITALCOM:XAUUSD")
+    ep.set_defaults(func=cmd_export_pine)
+
+    cb = sub.add_parser("calibrate",
+                        help="measure a feed's volume/displacement distributions")
+    cb.add_argument("--entry", required=True, help="bars from the feed to check")
+    cb.add_argument("--zone")
+    cb.add_argument("--bias")
+    cb.set_defaults(func=cmd_calibrate)
+
+    al = sub.add_parser("alert-levels",
+                        help="print the price alerts for the current setup")
+    add_data(al)
+    al.set_defaults(func=cmd_alert_levels)
 
     return p
 

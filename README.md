@@ -86,6 +86,80 @@ getting that wrong silently misplaces every session filter.
 
 ---
 
+## Seeing signals on TradingView
+
+Two overlays, answering different questions. Use both.
+
+### 1. The logic on the chart — `pine/xau_agent_strategy.pine`
+
+Open **CAPITALCOM:XAUUSD** on 1h → Pine Editor → paste → Save → Add to chart.
+
+Draws every signal, live and historical, with its SL, TP1 and TP2 as shaded
+boxes, and fills the **Strategy Tester** tab with real win rate, profit factor
+and drawdown. "List of Trades" is every historical entry with its exit.
+
+For alerts: right-click the chart → Add alert → Condition = *XAUUSD Disciplined
+Agent* → "Any alert() function call", frequency **Once per bar close**. The
+message carries entry, SL, TP1, TP2, score and size. This is the same mechanism
+your existing indicator alerts already use.
+
+> **It uses 2 timeframes, not 3.** The chart supplies both the order-block zone
+> and the Heikin Ashi trigger; one higher timeframe supplies the bias. Pulling
+> order-block state off a third timeframe through `request.security` cannot be
+> made reliably non-repainting, and a repainting backtest is worse than none. So
+> it will not agree trade-for-trade with the Python engine, which stays the
+> source of truth for the journal and the gate. Its max score is also 93 rather
+> than 100 (it does not track BOS/CHoCH separately), which makes any threshold
+> slightly stricter — the safe direction.
+
+### 2. Your actual logged trades — `export-pine`
+
+```bash
+python3 -m xau_agent.cli export-pine          # -> pine/xau_agent_journal.pine
+```
+
+Generates an indicator that draws the signals the Python engine *really*
+produced, at their real timestamps, with their real levels and outcome. Nothing
+is recomputed. Hover any marker for entry/SL/TP/exit/R/mode. Filter by outcome,
+score or mode in the settings. Anchored to absolute time, so it renders
+correctly on any timeframe.
+
+Capped at the newest 160 trades (TradingView allows 500 drawing objects per
+type, and each trade costs two boxes).
+
+### Alerts through the MCP connector
+
+The connector accepts **simple price conditions only** — no indicator alerts and
+no webhooks (TradingView requires verified 2FA for those, which MCP can't do).
+So a signal becomes three price alerts:
+
+```bash
+python3 -m xau_agent.cli alert-levels --entry data/XAUUSD_1h_capitalcom.csv
+```
+
+prints the entry, stop and target with the right cross direction, and Claude can
+create them. For full-message signal alerts, use the Pine route above instead.
+
+### Check any new feed first
+
+```bash
+python3 -m xau_agent.cli calibrate --entry data/XAUUSD_1h_capitalcom.csv
+```
+
+Volume conventions differ by provider. Measured on gold 1h:
+
+| feed | volume ratio p90 | max | ≥1.4× | displacement ≥1.3 ATR |
+|---|---|---|---|---|
+| OANDA | 1.90 | 6.53 | 20.6% | 3.6% |
+| CAPITALCOM | 1.54 | 2.14 | 16.7% | 4.0% |
+
+Both work at 1.4. But CAPITALCOM volume is less spiky — only 2.5% of bars clear
+1.8× and **none** clear 2.5×, so raising the volume threshold there silences the
+system completely. `calibrate` says so explicitly rather than letting you
+discover it as a mysterious absence of signals.
+
+---
+
 ## Layout
 
 ```

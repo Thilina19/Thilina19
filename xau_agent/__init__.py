@@ -10,6 +10,7 @@ from .config import DEFAULT_CONFIG, AgentConfig, RiskLimits, StrategyParams
 from .indicators import Bar
 from .journal import Journal, JournalEntry, Mode, PerformanceGate, compute_stats
 from .risk import RiskManager, SessionState
+from .pine_export import build_pine, write_pine
 from .strategy import Rejection, Side, Signal, Strategy
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "Bar", "Journal", "JournalEntry", "Mode", "PerformanceGate", "compute_stats",
     "RiskManager", "SessionState",
     "Strategy", "Signal", "Rejection", "Side",
+    "build_pine", "write_pine",
 ]
 
 __version__ = "0.1.0"
