@@ -71,6 +71,69 @@ def brackets_balanced(src: str) -> tuple[bool, str]:
     return True, "balanced"
 
 
+#: Pine output calls that satisfy the CE10244 "script must produce output" check.
+PINE_OUTPUT_CALLS = (
+    "plot(", "plotshape(", "plotchar(", "plotcandle(", "plotarrow(", "plotbar(",
+    "barcolor(", "bgcolor(", "hline(", "fill(",
+)
+
+
+def global_output_calls(src: str) -> list[tuple[int, str]]:
+    """Output calls at column 0, i.e. at global scope.
+
+    Pine raises CE10244 unless a script has at least one of these at GLOBAL
+    scope. Calls nested inside `if` are local and do not count, and neither
+    does a `var table t = table.new(...)` initialiser -- which is exactly how
+    both of these scripts failed the first time.
+    """
+    found = []
+    for n, line in enumerate(strip_comments(src).splitlines(), 1):
+        if line.startswith((" ", "\t")):
+            continue
+        if any(line.startswith(c) for c in PINE_OUTPUT_CALLS):
+            found.append((n, line))
+    return found
+
+
+def indented_output_calls(src: str) -> list[int]:
+    """Output calls inside a local scope, which Pine does not allow at all."""
+    bad = []
+    for n, line in enumerate(strip_comments(src).splitlines(), 1):
+        if not line.startswith((" ", "\t")):
+            continue
+        s = line.lstrip()
+        if any(s.startswith(c) for c in PINE_OUTPUT_CALLS):
+            bad.append(n)
+    return bad
+
+
+def typed_function_params(src: str) -> list[str]:
+    """User function definitions with type annotations on parameters.
+
+    Pine user-function signatures are untyped; annotating them is an error.
+    """
+    bad = []
+    for line in strip_comments(src).splitlines():
+        m = re.match(r"^(\w+)\(([^)]*)\)\s*=>", line)
+        if m and re.search(
+            r"\b(int|float|bool|string|color|series|simple)\s+\w+", m.group(2)
+        ):
+            bad.append(m.group(1))
+    return bad
+
+
+def reused_exit_ids(src: str) -> dict[str, set[str]]:
+    """strategy.exit ids used with more than one from_entry."""
+    ids: dict[str, set[str]] = {}
+    for line in strip_comments(src).splitlines():
+        m = re.search(
+            r'strategy\.exit\(\s*"([^"]+)".*?from_entry\s*=\s*"([^"]+)"', line
+        )
+        if m:
+            ids.setdefault(m.group(1), set()).add(m.group(2))
+    return {k: v for k, v in ids.items() if len(v) > 1}
+
+
 def strip_comments(src: str) -> str:
     out = []
     for raw in src.splitlines():
@@ -167,6 +230,42 @@ class TestStrategyPineFile(unittest.TestCase):
         self.assertIn("barstate.isconfirmed", gate,
                       "entries must be evaluated on bar close, not intrabar")
 
+    def test_has_a_global_output_call(self) -> None:
+        """Regression guard for Pine error CE10244.
+
+        The first version of this file drew boxes, labels, a table and placed
+        orders -- and still would not compile, because every one of those calls
+        was inside an `if` (local scope) and a `var table t = table.new(...)`
+        initialiser does not satisfy the check either. A script needs at least
+        one unconditional output call at column 0.
+        """
+        found = global_output_calls(self.src)
+        self.assertTrue(
+            found,
+            "no output call at global scope -- Pine will reject this with "
+            "CE10244 regardless of how much the script draws",
+        )
+
+    def test_no_output_calls_in_local_scope(self) -> None:
+        bad = indented_output_calls(self.src)
+        self.assertEqual(bad, [],
+                         f"plot-family calls cannot be conditional; lines {bad}")
+
+    def test_no_typed_function_parameters(self) -> None:
+        bad = typed_function_params(self.src)
+        self.assertEqual(bad, [],
+                         f"Pine function params must be untyped; offenders: {bad}")
+
+    def test_exit_ids_not_reused_across_directions(self) -> None:
+        dupes = reused_exit_ids(self.src)
+        self.assertEqual(dupes, {},
+                         f"an exit id maps to two entries, which is ambiguous: {dupes}")
+
+    def test_plots_the_working_stop_not_the_original(self) -> None:
+        """After TP1 the stop moves to breakeven; the chart must show that."""
+        self.assertIn("activeSL", self.code)
+        self.assertRegex(self.code, r"plot\(inPos \? activeSL")
+
     def test_exposes_alerts(self) -> None:
         self.assertIn("alertcondition(", self.code)
         self.assertIn("alert(", self.code)
@@ -253,6 +352,29 @@ class TestJournalPineExport(unittest.TestCase):
         ok, msg = brackets_balanced(src)
         self.assertTrue(ok, f"a quote in journal text broke the output: {msg}")
         self.assertNotIn('"pa"per"', src)
+
+    def test_generated_script_has_a_global_output_call(self) -> None:
+        """Same CE10244 guard for the generated indicator.
+
+        Every drawing call in the generated file sits inside
+        `if barstate.islast`, so without an unconditional plot() it will not
+        compile -- which is how it was first written.
+        """
+        for trades in ([], [mk_trade(day=1)], [mk_trade(day=d) for d in (1, 2, 3)]):
+            src = build_pine(trades)
+            self.assertTrue(
+                global_output_calls(src),
+                "generated Pine has no global output call -- CE10244",
+            )
+
+    def test_generated_script_has_no_local_output_calls(self) -> None:
+        src = build_pine([mk_trade(day=1)])
+        self.assertEqual(indented_output_calls(src), [])
+
+    def test_anchor_plot_draws_nothing(self) -> None:
+        """The compile-satisfying plot must not put a line on the chart."""
+        src = build_pine([mk_trade(day=1)])
+        self.assertIn('plot(na, "anchor")', src)
 
     def test_mode_filter_values_are_present(self) -> None:
         src = build_pine([mk_trade(day=1, mode=Mode.LIVE.value)])

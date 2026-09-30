@@ -159,6 +159,14 @@ cOpen = input.color(color.new(#b0bec5, 0),  "Open colour")
 
 {arrays}
 
+// REQUIRED, not decorative. Pine rejects a script with CE10244 -- "must
+// contain at least one of the following: any plot*() function, barcolor(),
+// bgcolor(), hline(), or any drawing" -- unless there is an output call at
+// GLOBAL scope. Every box.new and label.new below sits inside
+// `if barstate.islast`, which is local scope and does not satisfy the check.
+// The value is na so this draws nothing; it exists to make the script compile.
+plot(na, "anchor")
+
 // Everything is drawn once, on the last bar, using absolute timestamps
 // (xloc.bar_time) so it is timeframe independent.
 if barstate.islast and array.size(sigTime) > 0

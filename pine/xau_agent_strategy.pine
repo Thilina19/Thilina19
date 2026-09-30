@@ -324,7 +324,9 @@ rsiV = ta.rsi(close, 14)
 // so it always awards the conservative 18. The practical effect is that the
 // maximum reachable score here is 93, not 100, which makes any given threshold
 // slightly STRICTER than the same number in Python. That is the safe direction.
-f_score(bool isLong, bool tapped, float dist, float disp, float vr, bool flip) =>
+// Parameters are deliberately untyped: Pine user-function signatures do not
+// take type annotations, and adding them is a compile error.
+f_score(isLong, tapped, dist, disp, vr, flip) =>
     int sc = 0
     // HTF bias: 18 of a possible 25 (mandatory -- no bias means no trade)
     sc := sc + 18
@@ -439,25 +441,31 @@ if shortSignal
     tradesToday := tradesToday + 1
 
 // Exits: half off at TP1, remainder at TP2, stop to breakeven after TP1.
-var bool tp1Done = false
+// activeSL is hoisted to global scope so the plot section below can show the
+// stop that is actually working, including after it moves to breakeven.
+var bool  tp1Done  = false
+var float activeSL = na
 if strategy.position_size == 0
-    tp1Done := false
+    tp1Done  := false
+    activeSL := na
 
 if strategy.position_size > 0
-    liveSL = tp1Done and beAtTP1 ? pendEnt : pendSL
-    strategy.exit("TP1", from_entry="Long", qty_percent=tp1Pct,
-       limit=pendTP1, stop=liveSL, comment_profit="TP1", comment_loss="SL")
-    strategy.exit("TP2", from_entry="Long",
-       limit=pendTP2, stop=liveSL, comment_profit="TP2", comment_loss="SL")
+    activeSL := tp1Done and beAtTP1 ? pendEnt : pendSL
+    // Exit ids are per-direction. Reusing one id across two different
+    // from_entry values makes the order book ambiguous.
+    strategy.exit("L-TP1", from_entry="Long", qty_percent=tp1Pct,
+       limit=pendTP1, stop=activeSL, comment_profit="TP1", comment_loss="SL")
+    strategy.exit("L-TP2", from_entry="Long",
+       limit=pendTP2, stop=activeSL, comment_profit="TP2", comment_loss="SL")
     if high >= pendTP1
         tp1Done := true
 
 if strategy.position_size < 0
-    liveSL = tp1Done and beAtTP1 ? pendEnt : pendSL
-    strategy.exit("TP1", from_entry="Short", qty_percent=tp1Pct,
-       limit=pendTP1, stop=liveSL, comment_profit="TP1", comment_loss="SL")
-    strategy.exit("TP2", from_entry="Short",
-       limit=pendTP2, stop=liveSL, comment_profit="TP2", comment_loss="SL")
+    activeSL := tp1Done and beAtTP1 ? pendEnt : pendSL
+    strategy.exit("S-TP1", from_entry="Short", qty_percent=tp1Pct,
+       limit=pendTP1, stop=activeSL, comment_profit="TP1", comment_loss="SL")
+    strategy.exit("S-TP2", from_entry="Short",
+       limit=pendTP2, stop=activeSL, comment_profit="TP2", comment_loss="SL")
     if low <= pendTP1
         tp1Done := true
 
@@ -504,6 +512,47 @@ if showLabels and (longSignal or shortSignal)
        style = dir == 1 ? label.style_label_up : label.style_label_down,
        color = color.new(dir == 1 ? colLong : colShort, 12),
        textcolor = color.white, size = size.small)
+
+// ------------------------------------------------------- plotted levels
+// These plot() calls are REQUIRED, not decorative.
+//
+// Pine rejects a script with error CE10244 -- "a strategy must contain at least
+// one of the following..." -- unless it has an output at GLOBAL scope. Every
+// box.new, label.new and strategy.entry above sits inside an `if`, which is
+// local scope, and a `var table t = table.new(...)` initialiser does not count
+// either. So without at least one unconditional plot() the script will not
+// compile, however much drawing it does.
+//
+// A plot cannot be wrapped in `if`, so visibility is controlled by feeding na
+// into the value and using style_linebr, which breaks the line on na instead of
+// interpolating across the gap.
+
+plot(showZones ? dTop : na, "Demand zone top",    color=color.new(colLong, 30),
+     style=plot.style_linebr, linewidth=1)
+plot(showZones ? dBot : na, "Demand zone bottom", color=color.new(colLong, 30),
+     style=plot.style_linebr, linewidth=1)
+plot(showZones ? sTop : na, "Supply zone top",    color=color.new(colShort, 30),
+     style=plot.style_linebr, linewidth=1)
+plot(showZones ? sBot : na, "Supply zone bottom", color=color.new(colShort, 30),
+     style=plot.style_linebr, linewidth=1)
+
+// The live trade's working levels, so they stay visible after the entry boxes
+// scroll away.
+inPos = strategy.position_size != 0
+plot(inPos ? pendEnt  : na, "Active entry", color=color.new(color.white, 20),
+     style=plot.style_linebr, linewidth=2)
+plot(inPos ? activeSL : na, "Active SL",    color=colShort,
+     style=plot.style_linebr, linewidth=2)
+plot(inPos ? pendTP1  : na, "Active TP1",   color=color.new(colLong, 45),
+     style=plot.style_linebr, linewidth=1)
+plot(inPos ? pendTP2  : na, "Active TP2",   color=colLong,
+     style=plot.style_linebr, linewidth=2)
+
+// Entry markers, independent of the label setting.
+plotshape(longSignal,  title="Long signal",  style=shape.triangleup,
+     location=location.belowbar, color=colLong,  size=size.tiny)
+plotshape(shortSignal, title="Short signal", style=shape.triangledown,
+     location=location.abovebar, color=colShort, size=size.tiny)
 
 // ------------------------------------------------------------- status panel
 
