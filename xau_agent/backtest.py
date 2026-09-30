@@ -63,6 +63,11 @@ class BacktestResult:
     bars_tested: int = 0
     signals_generated: int = 0
     signals_blocked_by_risk: int = 0
+    # Setups that never reached the risk check because a position was already
+    # running. Previously uncounted, which made "11 signals, 2 trades" look
+    # inexplicable -- this is usually the real limit on trades per day.
+    setups_missed_in_position: int = 0
+    bars_in_position: int = 0
     block_reasons: dict[str, int] = field(default_factory=dict)
     equity_curve_r: list[float] = field(default_factory=list)
     daily_pnl: dict[str, float] = field(default_factory=dict)
@@ -78,6 +83,8 @@ class BacktestResult:
             f"bars tested            {self.bars_tested}",
             f"signals generated      {self.signals_generated}",
             f"blocked by risk rules  {self.signals_blocked_by_risk}",
+            f"missed, position open  {self.setups_missed_in_position}",
+            f"bars held in position  {self.bars_in_position}",
             f"trades taken           {self.stats.n}",
             "",
             self.stats.summary(),
@@ -216,7 +223,21 @@ class Backtester:
                     )
                     pos = None
                 else:
-                    continue  # still in a trade; one position at a time
+                    # Still in a trade. Count what we are walking past, because
+                    # trade DURATION, not signal frequency, is often what caps
+                    # trades per day.
+                    res.bars_in_position += 1
+                    zi_p = align_index(zone_times, bar.t)
+                    bi_p = align_index(bias_times, bar.t)
+                    if zi_p >= 50 and bi_p >= p.ema_slow:
+                        peek = self.strategy.evaluate(
+                            entry_view=entry_view, entry_idx=i,
+                            bias_view=bias_view, bias_idx=bi_p,
+                            zone_view=zone_view, zone_idx=zi_p,
+                        )
+                        if not isinstance(peek, Rejection):
+                            res.setups_missed_in_position += 1
+                    continue  # one position at a time
 
             # ---- look for a setup
             zi = align_index(zone_times, bar.t)

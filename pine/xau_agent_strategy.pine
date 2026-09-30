@@ -6,6 +6,18 @@
 // for all history, and reports real statistics in TradingView's Strategy Tester.
 //
 // HOW TO USE
+//   FOR DAILY ENTRIES, USE THE 15m CHART.
+//     A 2.2R target takes a similar number of BARS on any timeframe, because
+//     R is ATR-based. Measured on real 4h gold, a trade ran 56 bars. With one
+//     position at a time that sets the ceiling on entries:
+//         4h  -> 9.3 days per trade -> 0.1 trades/day
+//         1h  -> 2.3 days           -> 0.4 trades/day
+//         15m -> 14 hours           -> 1.7 trades/day   <-- daily entries
+//         5m  -> 4.7 hours          -> 5 trades/day, above the 3/day cap
+//     On 4h the strategy was not short of signals: it found 11 and had to skip
+//     16 more because a trade was already running. Duration was the limit, not
+//     selectivity.
+//
 //   1. Open CAPITALCOM:XAUUSD (the feed this account already charts).
 //      Timeframe: 15m or 1h. The chart timeframe supplies BOTH the
 //      order-block zone and the entry trigger, so it is the zone timeframe of

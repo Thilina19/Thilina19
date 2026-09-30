@@ -86,6 +86,32 @@ getting that wrong silently misplaces every session filter.
 
 ---
 
+## Choosing the timeframe: it decides your trade count
+
+A 2.2R target takes a similar number of **bars** on any timeframe, because R is
+ATR-based and ATR scales with the bar. Measured on real 4h gold, a trade ran
+**56 bars**. Since only one position is open at a time, that sets the ceiling:
+
+| chart TF | trade length | max trades/day | |
+|---|---|---|---|
+| 4h | 9.3 days | 0.1 | far too slow |
+| 1h | 2.3 days | 0.4 | far too slow |
+| 30m | 28 hours | 0.9 | still below daily |
+| **15m** | **14 hours** | **1.7** | **daily entries** |
+| 5m | 4.7 hours | 5.1 | above the 3/day cap |
+
+$500/day on $50k needs roughly 1.7 trades/day at a 60% win rate with 2R
+winners, so **15m is the timeframe that fits the target**.
+
+The measurement that matters: on 4h the strategy was *not* short of signals. It
+took 11 and had to skip **16 more** because a trade was already running.
+Duration was the constraint, not selectivity. Raising trade count by loosening
+filters would have been the wrong fix.
+
+Caveat: the 56-bar figure comes from 2 closed trades. It is the right shape of
+answer, not a precise one. Confirm it in the Strategy Tester's average-bars-in-
+trade figure once you have real history loaded.
+
 ## Seeing signals on TradingView
 
 Two overlays, answering different questions. Use both.
