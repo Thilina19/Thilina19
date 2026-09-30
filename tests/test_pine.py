@@ -122,6 +122,44 @@ def typed_function_params(src: str) -> list[str]:
     return bad
 
 
+def unbalanced_lines(src: str) -> list[int]:
+    """Lines that leave a call open, i.e. rely on Pine line continuation.
+
+    Continuation is fragile in a way that is not the author's fault: Pine only
+    accepts a continuation line whose indent is NOT a multiple of 4 (4 means a
+    local block), and editors normalise pasted indentation. A file written with
+    3-space continuations arrived in the TradingView editor with 4, and every
+    continued call reported "Missing closing parenthesis" (CE10015).
+
+    Keeping every call on one line removes the whole class of failure.
+    """
+    bad = []
+    for n, line in enumerate(strip_comments(src).splitlines(), 1):
+        body = line.strip()
+        if not body:
+            continue
+        d = 0; i = 0; in_str = False
+        while i < len(body):
+            c = body[i]
+            if in_str:
+                if c == "\\":
+                    i += 2
+                    continue
+                if c == '"':
+                    in_str = False
+            else:
+                if c == '"':
+                    in_str = True
+                elif c in "([":
+                    d += 1
+                elif c in ")]":
+                    d -= 1
+            i += 1
+        if d != 0:
+            bad.append(n)
+    return bad
+
+
 def comments_inside_calls(src: str) -> list[tuple[int, str]]:
     """Comment lines sitting inside an unclosed multi-line function call.
 
@@ -272,6 +310,21 @@ class TestStrategyPineFile(unittest.TestCase):
             found,
             "no output call at global scope -- Pine will reject this with "
             "CE10244 regardless of how much the script draws",
+        )
+
+    def test_every_call_fits_on_one_line(self) -> None:
+        """No reliance on Pine line continuation anywhere.
+
+        Continuation requires an indent that is not a multiple of 4, and the
+        TradingView editor renormalises pasted indentation. A 3-space
+        continuation became 4 on paste and every continued call failed with
+        CE10015. Single-line calls cannot be broken this way.
+        """
+        bad = unbalanced_lines(self.src)
+        self.assertEqual(
+            bad, [],
+            f"lines rely on line continuation and can be broken by the "
+            f"editor's indentation handling: {bad}",
         )
 
     def test_no_comments_inside_multiline_calls(self) -> None:

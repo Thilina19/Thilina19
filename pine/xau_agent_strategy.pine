@@ -95,20 +95,16 @@ plot(na, "anchor")
 
 grpR = "Risk (hard limits)"
 acctEquity   = input.float(50000.0, "Account equity ($)",      group=grpR, minval=100)
-riskPct      = input.float(0.5,     "Risk per trade (%)",      group=grpR, minval=0.05, maxval=1.0, step=0.05,
-   tooltip="Capped at 1%. 0.5% of $50,000 = $250, so one 2R winner meets a $500 day.")
-dailyTarget  = input.float(500.0,   "Daily profit target ($)", group=grpR, minval=0,
-   tooltip="Reaching it stops trading for the day. Giving profit back is a real failure mode.")
+riskPct = input.float(0.5, "Risk per trade (%)", group=grpR, minval=0.05, maxval=1.0, step=0.05, tooltip="Capped at 1%. 0.5% of $50,000 = $250, so one 2R winner meets a $500 day.")
+dailyTarget = input.float(500.0, "Daily profit target ($)", group=grpR, minval=0, tooltip="Reaching it stops trading for the day. Giving profit back is a real failure mode.")
 dailyMaxLoss = input.float(500.0,   "Daily loss cap ($)",      group=grpR, minval=0)
 maxTrades    = input.int(3,         "Max trades per day",      group=grpR, minval=1, maxval=10)
 maxConsecL   = input.int(2,         "Consecutive losses then stop", group=grpR, minval=1, maxval=5)
-cooloffMin   = input.int(30,        "Cool-off after a loss (min)",  group=grpR, minval=0,
-   tooltip="The anti-revenge rule. No new entry inside this window.")
+cooloffMin = input.int(30, "Cool-off after a loss (min)", group=grpR, minval=0, tooltip="The anti-revenge rule. No new entry inside this window.")
 minRR        = input.float(1.8,     "Minimum reward:risk",     group=grpR, minval=1.0, step=0.1)
 
 grpB = "Bias"
-biasTF   = input.timeframe("240", "Bias timeframe",        group=grpB,
-   tooltip="240 = 4h. Use 1D for a slower, more selective read.")
+biasTF = input.timeframe("240", "Bias timeframe", group=grpB, tooltip="240 = 4h. Use 1D for a slower, more selective read.")
 emaFast  = input.int(50,  "Fast EMA", group=grpB, minval=5)
 emaSlow  = input.int(200, "Slow EMA", group=grpB, minval=20)
 swingLB  = input.int(2,   "Swing fractal strength", group=grpB, minval=1, maxval=10)
@@ -116,10 +112,8 @@ biasMode = input.string("ema_fallback", "Bias rule", options=["strict", "ema_fal
 
 grpZ = "Order blocks"
 atrLen      = input.int(14,   "ATR length",                group=grpZ, minval=2)
-dispATR     = input.float(1.3,"Displacement (x ATR)",      group=grpZ, minval=0.3, step=0.1,
-   tooltip="Body of the impulse candle as a multiple of ATR. On real gold 1h, 3.6% of bars clear 1.3.")
-minVolRatio = input.float(1.4,"Displacement volume (x avg)",group=grpZ, minval=0.5, step=0.1,
-   tooltip="Volume on the DISPLACEMENT candle, not the block candle. Measured on 400 real gold 1h bars, displacement candles run a median 1.83x average while block candles run 0.84x -- putting this filter on the block candle rejects nearly every genuine setup.")
+dispATR = input.float(1.3,"Displacement (x ATR)", group=grpZ, minval=0.3, step=0.1, tooltip="Body of the impulse candle as a multiple of ATR. On real gold 1h, 3.6% of bars clear 1.3.")
+minVolRatio = input.float(1.4,"Displacement volume (x avg)",group=grpZ, minval=0.5, step=0.1, tooltip="Volume on the DISPLACEMENT candle, not the block candle. Measured on 400 real gold 1h bars, displacement candles run a median 1.83x average while block candles run 0.84x -- putting this filter on the block candle rejects nearly every genuine setup.")
 volLB       = input.int(20,   "Volume average length",     group=grpZ, minval=5)
 obMaxAge    = input.int(60,   "Zone max age (bars)",       group=grpZ, minval=5)
 tapTolATR   = input.float(0.35,"Tap tolerance (x ATR)",    group=grpZ, minval=0.0, step=0.05)
@@ -128,10 +122,8 @@ tapGrace    = input.int(6,    "Tap stays live for (bars)", group=grpZ, minval=1,
 
 grpT = "Trigger and targets"
 haConfirm   = input.int(2,    "Heikin Ashi confirm bars",  group=grpT, minval=1, maxval=5)
-haMaxWick   = input.float(0.62,"Max HA wick ratio",        group=grpT, minval=0.1, maxval=0.95, step=0.01,
-   tooltip="1.0 is a pure doji. Above this the candle is indecision, not a turn.")
-minScore    = input.int(70,   "Minimum confluence score",  group=grpT, minval=0, maxval=100,
-   tooltip="The primary overtrading control. Raise for fewer, better trades.")
+haMaxWick = input.float(0.62,"Max HA wick ratio", group=grpT, minval=0.1, maxval=0.95, step=0.01, tooltip="1.0 is a pure doji. Above this the candle is indecision, not a turn.")
+minScore = input.int(70, "Minimum confluence score", group=grpT, minval=0, maxval=100, tooltip="The primary overtrading control. Raise for fewer, better trades.")
 slBufATR    = input.float(0.55,"SL buffer (x ATR)",        group=grpT, minval=0.0, step=0.05)
 slSwingLB   = input.int(12,   "SL swing lookback",         group=grpT, minval=3)
 tp1R        = input.float(1.0, "TP1 (R)",                  group=grpT, minval=0.3, step=0.1)
@@ -149,8 +141,7 @@ grpS = "Sessions and volatility"
 volAvgLen   = input.int(100,  "Volatility baseline (bars)", group=grpS, minval=20)
 minVolMult  = input.float(0.55,"Min volatility (x own average)", group=grpS, minval=0.1, step=0.05)
 maxVolMult  = input.float(2.50,"Max volatility (x own average)", group=grpS, minval=0.5, step=0.1)
-asianPenalty= input.int(12,   "Asian session penalty",     group=grpS, minval=0, maxval=40,
-   tooltip="Gold produces its most false breaks 00:00-07:00 UTC. Penalised, not banned.")
+asianPenalty= input.int(12, "Asian session penalty", group=grpS, minval=0, maxval=40, tooltip="Gold produces its most false breaks 00:00-07:00 UTC. Penalised, not banned.")
 
 grpV = "Display"
 showZones   = input.bool(true, "Draw order-block zones",   group=grpV)
@@ -276,11 +267,9 @@ if not na(sTop) and (close > sTop or bar_index - sBar > obMaxAge)
 
 // Draw the live zones once, when they form.
 if showZones and bullDisp and not na(dBot)
-    box.new(dBar, dTop, bar_index + 8, dBot,
-       border_color = color.new(colLong, 35), bgcolor = color.new(colLong, 88))
+    box.new(dBar, dTop, bar_index + 8, dBot, border_color = color.new(colLong, 35), bgcolor = color.new(colLong, 88))
 if showZones and bearDisp and not na(sTop)
-    box.new(sBar, sTop, bar_index + 8, sBot,
-       border_color = color.new(colShort, 35), bgcolor = color.new(colShort, 88))
+    box.new(sBar, sTop, bar_index + 8, sBot, border_color = color.new(colShort, 35), bgcolor = color.new(colShort, 88))
 
 // --------------------------------------------------------------- session
 
@@ -466,8 +455,7 @@ var int   pendBar = na
 var int   pendScore = 0
 
 if longSignal
-    strategy.entry("Long", strategy.long, qty=longQty,
-       comment="L " + str.tostring(longScore))
+    strategy.entry("Long", strategy.long, qty=longQty, comment="L " + str.tostring(longScore))
     pendSL    := longSL
     pendTP1   := longTP1
     pendTP2   := longTP2
@@ -478,8 +466,7 @@ if longSignal
     tradesToday := tradesToday + 1
 
 if shortSignal
-    strategy.entry("Short", strategy.short, qty=shortQty,
-       comment="S " + str.tostring(shortScore))
+    strategy.entry("Short", strategy.short, qty=shortQty, comment="S " + str.tostring(shortScore))
     pendSL    := shortSL
     pendTP1   := shortTP1
     pendTP2   := shortTP2
@@ -502,19 +489,15 @@ if strategy.position_size > 0
     activeSL := tp1Done and beAtTP1 ? pendEnt : pendSL
     // Exit ids are per-direction. Reusing one id across two different
     // from_entry values makes the order book ambiguous.
-    strategy.exit("L-TP1", from_entry="Long", qty_percent=tp1Pct,
-       limit=pendTP1, stop=activeSL, comment_profit="TP1", comment_loss="SL")
-    strategy.exit("L-TP2", from_entry="Long",
-       limit=pendTP2, stop=activeSL, comment_profit="TP2", comment_loss="SL")
+    strategy.exit("L-TP1", from_entry="Long", qty_percent=tp1Pct, limit=pendTP1, stop=activeSL, comment_profit="TP1", comment_loss="SL")
+    strategy.exit("L-TP2", from_entry="Long", limit=pendTP2, stop=activeSL, comment_profit="TP2", comment_loss="SL")
     if high >= pendTP1
         tp1Done := true
 
 if strategy.position_size < 0
     activeSL := tp1Done and beAtTP1 ? pendEnt : pendSL
-    strategy.exit("S-TP1", from_entry="Short", qty_percent=tp1Pct,
-       limit=pendTP1, stop=activeSL, comment_profit="TP1", comment_loss="SL")
-    strategy.exit("S-TP2", from_entry="Short",
-       limit=pendTP2, stop=activeSL, comment_profit="TP2", comment_loss="SL")
+    strategy.exit("S-TP1", from_entry="Short", qty_percent=tp1Pct, limit=pendTP1, stop=activeSL, comment_profit="TP1", comment_loss="SL")
+    strategy.exit("S-TP2", from_entry="Short", limit=pendTP2, stop=activeSL, comment_profit="TP2", comment_loss="SL")
     if low <= pendTP1
         tp1Done := true
 
@@ -530,16 +513,12 @@ if showTrades and (longSignal or shortSignal)
     // box.new takes (top, bottom) in that order, and for a short the stop sits
     // ABOVE the entry while TP2 sits below -- so the pairs must be ordered by
     // max/min rather than by role, or the boxes come out inverted on shorts.
-    box.new(bar_index, math.max(ent, sl), rgt, math.min(ent, sl),
-       border_color=color.new(colShort, 45), bgcolor=colSL, border_width=1)
-    box.new(bar_index, math.max(ent, t2), rgt, math.min(ent, t2),
-       border_color=color.new(colLong, 45), bgcolor=colTP, border_width=1)
+    box.new(bar_index, math.max(ent, sl), rgt, math.min(ent, sl), border_color=color.new(colShort, 45), bgcolor=colSL, border_width=1)
+    box.new(bar_index, math.max(ent, t2), rgt, math.min(ent, t2), border_color=color.new(colLong, 45), bgcolor=colTP, border_width=1)
     // TP1 partial line.
-    line.new(bar_index, t1, rgt, t1, color=color.new(colLong, 25),
-       style=line.style_dashed, width=1)
+    line.new(bar_index, t1, rgt, t1, color=color.new(colLong, 25), style=line.style_dashed, width=1)
     // Entry line.
-    line.new(bar_index, ent, rgt, ent,
-       color=dir == 1 ? colLong : colShort, width=2)
+    line.new(bar_index, ent, rgt, ent, color=dir == 1 ? colLong : colShort, width=2)
 
 if showLabels and (longSignal or shortSignal)
     dir   = longSignal ? 1 : -1
@@ -557,10 +536,7 @@ if showLabels and (longSignal or shortSignal)
             "\n"       + str.tostring(qty) + " oz  risk $" +
                          str.tostring(riskUSD, "#") +
             "\n"       + sessName
-    label.new(bar_index, dir == 1 ? low : high, txt,
-       style = dir == 1 ? label.style_label_up : label.style_label_down,
-       color = color.new(dir == 1 ? colLong : colShort, 12),
-       textcolor = color.white, size = size.small)
+    label.new(bar_index, dir == 1 ? low : high, txt, style = dir == 1 ? label.style_label_up : label.style_label_down, color = color.new(dir == 1 ? colLong : colShort, 12), textcolor = color.white, size = size.small)
 
 // --------------------------------------------------------- diagnostics
 // An empty Strategy Tester is uninformative on its own: it cannot distinguish
@@ -624,32 +600,22 @@ f_pct(n) =>
 // into the value and using style_linebr, which breaks the line on na instead of
 // interpolating across the gap.
 
-plot(showZones ? dTop : na, "Demand zone top",    color=color.new(colLong, 30),
-     style=plot.style_linebr, linewidth=1)
-plot(showZones ? dBot : na, "Demand zone bottom", color=color.new(colLong, 30),
-     style=plot.style_linebr, linewidth=1)
-plot(showZones ? sTop : na, "Supply zone top",    color=color.new(colShort, 30),
-     style=plot.style_linebr, linewidth=1)
-plot(showZones ? sBot : na, "Supply zone bottom", color=color.new(colShort, 30),
-     style=plot.style_linebr, linewidth=1)
+plot(showZones ? dTop : na, "Demand zone top", color=color.new(colLong, 30), style=plot.style_linebr, linewidth=1)
+plot(showZones ? dBot : na, "Demand zone bottom", color=color.new(colLong, 30), style=plot.style_linebr, linewidth=1)
+plot(showZones ? sTop : na, "Supply zone top", color=color.new(colShort, 30), style=plot.style_linebr, linewidth=1)
+plot(showZones ? sBot : na, "Supply zone bottom", color=color.new(colShort, 30), style=plot.style_linebr, linewidth=1)
 
 // The live trade's working levels, so they stay visible after the entry boxes
 // scroll away.
 inPos = strategy.position_size != 0
-plot(inPos ? pendEnt  : na, "Active entry", color=color.new(color.white, 20),
-     style=plot.style_linebr, linewidth=2)
-plot(inPos ? activeSL : na, "Active SL",    color=colShort,
-     style=plot.style_linebr, linewidth=2)
-plot(inPos ? pendTP1  : na, "Active TP1",   color=color.new(colLong, 45),
-     style=plot.style_linebr, linewidth=1)
-plot(inPos ? pendTP2  : na, "Active TP2",   color=colLong,
-     style=plot.style_linebr, linewidth=2)
+plot(inPos ? pendEnt : na, "Active entry", color=color.new(color.white, 20), style=plot.style_linebr, linewidth=2)
+plot(inPos ? activeSL : na, "Active SL", color=colShort, style=plot.style_linebr, linewidth=2)
+plot(inPos ? pendTP1 : na, "Active TP1", color=color.new(colLong, 45), style=plot.style_linebr, linewidth=1)
+plot(inPos ? pendTP2 : na, "Active TP2", color=colLong, style=plot.style_linebr, linewidth=2)
 
 // Entry markers, independent of the label setting.
-plotshape(longSignal,  title="Long signal",  style=shape.triangleup,
-     location=location.belowbar, color=colLong,  size=size.tiny)
-plotshape(shortSignal, title="Short signal", style=shape.triangledown,
-     location=location.abovebar, color=colShort, size=size.tiny)
+plotshape(longSignal, title="Long signal", style=shape.triangleup, location=location.belowbar, color=colLong, size=size.tiny)
+plotshape(shortSignal, title="Short signal", style=shape.triangledown, location=location.abovebar, color=colShort, size=size.tiny)
 
 // ------------------------------------------------------------- status panel
 
@@ -670,64 +636,44 @@ if showTable and barstate.islast
               lossStreakHit ? "2 losses -- done" :
               coolOffActive ? "cool-off active" : "ready"
 
-    table.cell(t, 0, 0, "XAU Agent v5", text_color=color.white,
-       bgcolor=color.new(color.blue, 30), text_size=size.small)
-    table.cell(t, 1, 0, timeframe.period + " / bias " + biasTF,
-       text_color=color.white, bgcolor=color.new(color.blue, 30), text_size=size.small)
+    table.cell(t, 0, 0, "XAU Agent v5", text_color=color.white, bgcolor=color.new(color.blue, 30), text_size=size.small)
+    table.cell(t, 1, 0, timeframe.period + " / bias " + biasTF, text_color=color.white, bgcolor=color.new(color.blue, 30), text_size=size.small)
 
     table.cell(t, 0, 1, "bias",  text_size=size.small)
-    table.cell(t, 1, 1, bias == 1 ? "BULL" : bias == -1 ? "BEAR" : "none",
-       text_color = bias == 1 ? colLong : bias == -1 ? colShort : color.gray,
-       text_size=size.small)
+    table.cell(t, 1, 1, bias == 1 ? "BULL" : bias == -1 ? "BEAR" : "none", text_color = bias == 1 ? colLong : bias == -1 ? colShort : color.gray, text_size=size.small)
 
     table.cell(t, 0, 2, "status", text_size=size.small)
-    table.cell(t, 1, 2, blocked,
-       text_color = blocked == "ready" ? colLong : colShort, text_size=size.small)
+    table.cell(t, 1, 2, blocked, text_color = blocked == "ready" ? colLong : colShort, text_size=size.small)
 
     table.cell(t, 0, 3, "long score",  text_size=size.small)
-    table.cell(t, 1, 3, str.tostring(longScore) + "/" + str.tostring(minScore),
-       text_size=size.small)
+    table.cell(t, 1, 3, str.tostring(longScore) + "/" + str.tostring(minScore), text_size=size.small)
     table.cell(t, 0, 4, "short score", text_size=size.small)
-    table.cell(t, 1, 4, str.tostring(shortScore) + "/" + str.tostring(minScore),
-       text_size=size.small)
+    table.cell(t, 1, 4, str.tostring(shortScore) + "/" + str.tostring(minScore), text_size=size.small)
 
     table.cell(t, 0, 5, "demand zone", text_size=size.small)
-    table.cell(t, 1, 5, na(dBot) ? "none" :
-       str.tostring(dBot, format.mintick) + "-" + str.tostring(dTop, format.mintick),
-       text_size=size.small)
+    table.cell(t, 1, 5, na(dBot) ? "none" : str.tostring(dBot, format.mintick) + "-" + str.tostring(dTop, format.mintick), text_size=size.small)
     table.cell(t, 0, 6, "supply zone", text_size=size.small)
-    table.cell(t, 1, 6, na(sTop) ? "none" :
-       str.tostring(sBot, format.mintick) + "-" + str.tostring(sTop, format.mintick),
-       text_size=size.small)
+    table.cell(t, 1, 6, na(sTop) ? "none" : str.tostring(sBot, format.mintick) + "-" + str.tostring(sTop, format.mintick), text_size=size.small)
 
     table.cell(t, 0, 7, "day P&L", text_size=size.small)
-    table.cell(t, 1, 7, "$" + str.tostring(dayPnl, "#.##") + " / " +
-       str.tostring(dailyTarget, "#"),
-       text_color = dayPnl >= 0 ? colLong : colShort, text_size=size.small)
+    table.cell(t, 1, 7, "$" + str.tostring(dayPnl, "#.##") + " / " + str.tostring(dailyTarget, "#"), text_color = dayPnl >= 0 ? colLong : colShort, text_size=size.small)
 
     table.cell(t, 0, 8, "trades today", text_size=size.small)
-    table.cell(t, 1, 8, str.tostring(tradesToday) + "/" + str.tostring(maxTrades),
-       text_size=size.small)
+    table.cell(t, 1, 8, str.tostring(tradesToday) + "/" + str.tostring(maxTrades), text_size=size.small)
 
     table.cell(t, 0, 9, "win rate", text_size=size.small)
-    table.cell(t, 1, 9, str.tostring(wr, "#.#") + "%  (" + str.tostring(dec) + " trades)",
-       text_size=size.small)
+    table.cell(t, 1, 9, str.tostring(wr, "#.#") + "% (" + str.tostring(dec) + " trades)", text_size=size.small)
 
     table.cell(t, 0, 10, "profit factor", text_size=size.small)
     table.cell(t, 1, 10, str.tostring(pf, "#.##"), text_size=size.small)
 
     table.cell(t, 0, 11, "volatility", text_size=size.small)
-    table.cell(t, 1, 11, na(volMult) ? "warming up" :
-       str.tostring(volMult, "#.##") + "x  (" +
-       str.tostring(minVolMult, "#.##") + "-" + str.tostring(maxVolMult, "#.##") + ")",
-       text_color = volOK ? colLong : colShort, text_size=size.small)
+    table.cell(t, 1, 11, na(volMult) ? "warming up" : str.tostring(volMult, "#.##") + "x (" + str.tostring(minVolMult, "#.##") + "-" + str.tostring(maxVolMult, "#.##") + ")", text_color = volOK ? colLong : colShort, text_size=size.small)
 
     // Why no trade fired: each confirmed bar counted against the FIRST gate it
     // failed. The largest number is the binding constraint.
-    table.cell(t, 0, 12, "WHY NO TRADE", text_color=color.white,
-       bgcolor=color.new(color.gray, 40), text_size=size.small)
-    table.cell(t, 1, 12, str.tostring(nBars) + " bars",
-       text_color=color.white, bgcolor=color.new(color.gray, 40), text_size=size.small)
+    table.cell(t, 0, 12, "WHY NO TRADE", text_color=color.white, bgcolor=color.new(color.gray, 40), text_size=size.small)
+    table.cell(t, 1, 12, str.tostring(nBars) + " bars", text_color=color.white, bgcolor=color.new(color.gray, 40), text_size=size.small)
     table.cell(t, 0, 13, "no 4h bias",       text_size=size.tiny)
     table.cell(t, 1, 13, f_pct(nBias),       text_size=size.tiny)
     table.cell(t, 0, 14, "no zone",          text_size=size.tiny)
@@ -739,34 +685,20 @@ if showTable and barstate.islast
     table.cell(t, 0, 17, "no HA trigger",    text_size=size.tiny)
     table.cell(t, 1, 17, f_pct(nHA),         text_size=size.tiny)
     table.cell(t, 0, 18, "volatility gate",  text_size=size.tiny)
-    table.cell(t, 1, 18, f_pct(nVol),
-       text_color = nVol > nBars / 2 ? colShort : color.gray, text_size=size.tiny)
+    table.cell(t, 1, 18, f_pct(nVol), text_color = nVol > nBars / 2 ? colShort : color.gray, text_size=size.tiny)
     table.cell(t, 0, 19, "score below min",  text_size=size.tiny)
     table.cell(t, 1, 19, f_pct(nScore),      text_size=size.tiny)
     table.cell(t, 0, 20, "risk rules / fired", text_size=size.tiny)
-    table.cell(t, 1, 20, f_pct(nRisk) + " / " + str.tostring(nFired),
-       text_size=size.tiny)
+    table.cell(t, 1, 20, f_pct(nRisk) + " / " + str.tostring(nFired), text_size=size.tiny)
 
 // ------------------------------------------------------------- alerts
 // Create these in TradingView: right-click chart -> Add alert -> Condition =
 // this script. Use "Once per bar close" so it matches the tested behaviour.
 
-alertcondition(longSignal,  title="XAU long entry",
-     message="XAUUSD LONG {{ticker}} @ {{close}} -- see chart for SL/TP")
-alertcondition(shortSignal, title="XAU short entry",
-     message="XAUUSD SHORT {{ticker}} @ {{close}} -- see chart for SL/TP")
+alertcondition(longSignal, title="XAU long entry", message="XAUUSD LONG {{ticker}} @ {{close}} -- see chart for SL/TP")
+alertcondition(shortSignal, title="XAU short entry", message="XAUUSD SHORT {{ticker}} @ {{close}} -- see chart for SL/TP")
 
 if longSignal
-    alert("XAUUSD LONG @ " + str.tostring(longEntry, format.mintick) +
-          "  SL " + str.tostring(longSL, format.mintick) +
-          "  TP1 " + str.tostring(longTP1, format.mintick) +
-          "  TP2 " + str.tostring(longTP2, format.mintick) +
-          "  score " + str.tostring(longScore) + "/100" +
-          "  size " + str.tostring(longQty) + " oz", alert.freq_once_per_bar_close)
+    alert("XAUUSD LONG @ " + str.tostring(longEntry, format.mintick) + " SL " + str.tostring(longSL, format.mintick) + " TP1 " + str.tostring(longTP1, format.mintick) + " TP2 " + str.tostring(longTP2, format.mintick) + " score " + str.tostring(longScore) + "/100" + " size " + str.tostring(longQty) + " oz", alert.freq_once_per_bar_close)
 if shortSignal
-    alert("XAUUSD SHORT @ " + str.tostring(shortEntry, format.mintick) +
-          "  SL " + str.tostring(shortSL, format.mintick) +
-          "  TP1 " + str.tostring(shortTP1, format.mintick) +
-          "  TP2 " + str.tostring(shortTP2, format.mintick) +
-          "  score " + str.tostring(shortScore) + "/100" +
-          "  size " + str.tostring(shortQty) + " oz", alert.freq_once_per_bar_close)
+    alert("XAUUSD SHORT @ " + str.tostring(shortEntry, format.mintick) + " SL " + str.tostring(shortSL, format.mintick) + " TP1 " + str.tostring(shortTP1, format.mintick) + " TP2 " + str.tostring(shortTP2, format.mintick) + " score " + str.tostring(shortScore) + "/100" + " size " + str.tostring(shortQty) + " oz", alert.freq_once_per_bar_close)
