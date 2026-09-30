@@ -37,6 +37,13 @@
 //   which is what the Python align_index() does. Entries are evaluated on bar
 //   close (process_orders_on_close). Historical and live behaviour match.
 //
+// CHECK YOU ARE RUNNING THIS BUILD
+//   The chart legend must read "XAU Agent v5 ...". If it reads "XAU Agent"
+//   with no version, the chart is still running an older copy and none of the
+//   fixes below are active -- pasting into the Pine Editor does not update an
+//   instance that is already on the chart unless you save the SAME script.
+//   Remove the indicator from the chart, then Save and Add to chart again.
+//
 // IF YOU SEE NO TRADES
 //   Open the status panel (top right). It counts every bar against the FIRST
 //   gate it failed, so the largest number names the binding constraint. Two
@@ -77,7 +84,7 @@
 //     notch more conservative -- it fills at the NEXT bar's open -- so expect
 //     this tester to read slightly better than the Python backtest.
 
-strategy("XAUUSD Disciplined Agent", shorttitle = "XAU Agent", overlay = true, initial_capital = 50000, currency = currency.USD, default_qty_type = strategy.fixed, default_qty_value = 1, commission_type = strategy.commission.cash_per_contract, commission_value = 0.0, slippage = 25, process_orders_on_close = true, calc_on_every_tick = false, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+strategy("XAUUSD Disciplined Agent", shorttitle = "XAU Agent v5", overlay = true, initial_capital = 50000, currency = currency.USD, default_qty_type = strategy.fixed, default_qty_value = 1, commission_type = strategy.commission.cash_per_contract, commission_value = 0.0, slippage = 25, process_orders_on_close = true, calc_on_every_tick = false, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
 
 // A global output, declared immediately after the strategy() call so it cannot
 // be affected by anything later in the script. Value is na, so it draws
@@ -663,7 +670,7 @@ if showTable and barstate.islast
               lossStreakHit ? "2 losses -- done" :
               coolOffActive ? "cool-off active" : "ready"
 
-    table.cell(t, 0, 0, "XAU Agent", text_color=color.white,
+    table.cell(t, 0, 0, "XAU Agent v5", text_color=color.white,
        bgcolor=color.new(color.blue, 30), text_size=size.small)
     table.cell(t, 1, 0, timeframe.period + " / bias " + biasTF,
        text_color=color.white, bgcolor=color.new(color.blue, 30), text_size=size.small)

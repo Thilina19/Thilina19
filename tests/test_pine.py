@@ -336,6 +336,23 @@ class TestStrategyPineFile(unittest.TestCase):
                           f"diagnostic counter {token} is missing")
         self.assertIn("WHY NO TRADE", self.src)
 
+    def test_shorttitle_carries_a_version(self) -> None:
+        """The chart legend must identify the build.
+
+        A full debugging round trip was spent on a chart that was silently
+        running an older copy of the script: pasting into the Pine Editor does
+        not update an instance already applied unless the same saved script is
+        saved. A version in the shorttitle makes that visible at a glance.
+        """
+        import re as _re
+        m = _re.search(r'shorttitle\s*=\s*"([^"]+)"', self.code)
+        self.assertIsNotNone(m, "strategy() must set a shorttitle")
+        self.assertRegex(
+            m.group(1), r"v\d+",
+            f"shorttitle {m.group(1)!r} carries no version, so the chart "
+            f"legend cannot prove which build is loaded",
+        )
+
     def test_exposes_alerts(self) -> None:
         self.assertIn("alertcondition(", self.code)
         self.assertIn("alert(", self.code)
