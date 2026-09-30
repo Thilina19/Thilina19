@@ -231,6 +231,38 @@ def cmd_log_trade(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_import_tv(args: argparse.Namespace) -> int:
+    """Load a TradingView Strategy Tester export into the journal."""
+    from .tv_import import parse_tv_export
+
+    try:
+        entries = parse_tv_export(
+            args.file, risk_per_trade=args.risk, mode=args.mode,
+            session=args.session)
+    except ValueError as e:
+        print(f"CANNOT IMPORT: {e}")
+        return 2
+    if not entries:
+        print("No completed trades found. A trade still open has no exit row "
+              "and is skipped.")
+        return 1
+
+    with Journal(args.db) as j:
+        n = j.record_many(entries)
+        stats = compute_stats(j.trades())
+    wins = sum(1 for e in entries if e.outcome == Outcome.WIN.value)
+    losses = sum(1 for e in entries if e.outcome == Outcome.LOSS.value)
+    print(f"imported {n} trades ({wins}W / {losses}L) into {args.db}")
+    print(f"  R-multiples derived as P&L / {args.risk:.0f}, which assumes every "
+          f"position\n  was sized to that fixed risk. Pass --risk if it was not.")
+    print()
+    print("journal now holds:")
+    print(f"  {stats.summary()}")
+    print()
+    print("Next: python3 -m xau_agent.cli review")
+    return 0
+
+
 def cmd_calibrate(args: argparse.Namespace) -> int:
     """Measure a feed's displacement and volume distributions.
 
@@ -473,6 +505,16 @@ def build_parser() -> argparse.ArgumentParser:
                     help="only export this mode (default: all)")
     ep.add_argument("--symbol", default="CAPITALCOM:XAUUSD")
     ep.set_defaults(func=cmd_export_pine)
+
+    it = sub.add_parser("import-tv",
+                        help="load a TradingView List of Trades CSV export")
+    it.add_argument("file", help="CSV from Strategy Tester -> List of Trades")
+    it.add_argument("--risk", type=float, default=250.0,
+                    help="risk per trade in $, used to derive R (default 250)")
+    it.add_argument("--mode", default=Mode.PAPER.value,
+                    choices=[m.value for m in Mode])
+    it.add_argument("--session", default="unknown")
+    it.set_defaults(func=cmd_import_tv)
 
     cb = sub.add_parser("calibrate",
                         help="measure a feed's volume/displacement distributions")

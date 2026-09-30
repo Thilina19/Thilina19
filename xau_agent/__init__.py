@@ -12,13 +12,14 @@ from .journal import Journal, JournalEntry, Mode, PerformanceGate, compute_stats
 from .risk import RiskManager, SessionState
 from .pine_export import build_pine, write_pine
 from .strategy import Rejection, Side, Signal, Strategy
+from .tv_import import parse_tv_export
 
 __all__ = [
     "AgentConfig", "RiskLimits", "StrategyParams", "DEFAULT_CONFIG",
     "Bar", "Journal", "JournalEntry", "Mode", "PerformanceGate", "compute_stats",
     "RiskManager", "SessionState",
     "Strategy", "Signal", "Rejection", "Side",
-    "build_pine", "write_pine",
+    "build_pine", "write_pine", "parse_tv_export",
 ]
 
 __version__ = "0.1.0"
