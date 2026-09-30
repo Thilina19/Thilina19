@@ -1,0 +1,25 @@
+//@version=6
+// Minimal smoke test. Use this ONLY if the main script still fails to compile.
+//
+// It is deliberately tiny and uses the same structural features as the real
+// script: a single-line strategy() call, a global plot, an order, and a drawing
+// inside an if-block. If this compiles and the main script does not, the fault
+// is somewhere in the main script's body and we bisect from there. If even this
+// fails, the problem is with the editor or the paste rather than the code.
+
+strategy("Smoke Test", overlay = true, initial_capital = 50000)
+
+plot(na, "anchor")
+
+ema20 = ta.ema(close, 20)
+plot(ema20, "EMA20", color = color.blue)
+
+up = ta.crossover(close, ema20)
+
+if up
+    label.new(bar_index, low, "x", style = label.style_triangleup,
+         color = color.green, size = size.tiny)
+    strategy.entry("L", strategy.long)
+
+if ta.crossunder(close, ema20)
+    strategy.close("L")

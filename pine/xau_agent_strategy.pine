@@ -45,27 +45,30 @@
 //   Pine cannot place orders with your broker. This draws and measures.
 // =============================================================================
 
-strategy("XAUUSD Disciplined Agent",
-     shorttitle       = "XAU Agent",
-     overlay          = true,
-     initial_capital  = 50000,
-     currency         = currency.USD,
-     default_qty_type = strategy.fixed,
-     default_qty_value= 1,
-     commission_type  = strategy.commission.cash_per_contract,
-     commission_value = 0.0,
-     // 25 ticks at a 0.01 mintick = $0.25, which is a realistic XAUUSD spread
-     // and matches the cost the Python backtester charges. Without this the
-     // tester reports meaningfully better numbers than you would be filled at.
-     slippage         = 25,
-     // Orders fill at the close of the signal bar. The Python engine is one
-     // notch more conservative -- it fills at the NEXT bar's open -- so expect
-     // this tester to read slightly better than the Python backtest.
-     process_orders_on_close = true,
-     calc_on_every_tick      = false,
-     max_boxes_count  = 500,
-     max_labels_count = 500,
-     max_lines_count  = 500)
+// Notes on the settings below -- these MUST stay outside the call.
+//
+//   Pine does not allow a comment line inside a multi-line function call. The
+//   comment terminates the call, so the remaining arguments are orphaned and
+//   the whole script mis-parses. The symptom is misleading: the compiler then
+//   reports CE10244 ("a strategy must contain at least one ... plot")
+//   against line 1, even though the script is full of plots and orders.
+//
+//   slippage = 25
+//     25 ticks at a 0.01 mintick is $0.25, a realistic XAUUSD spread, and the
+//     same cost the Python backtester charges. Without it the tester reports
+//     meaningfully better numbers than you would actually be filled at.
+//
+//   process_orders_on_close = true
+//     Orders fill at the close of the signal bar. The Python engine is one
+//     notch more conservative -- it fills at the NEXT bar's open -- so expect
+//     this tester to read slightly better than the Python backtest.
+
+strategy("XAUUSD Disciplined Agent", shorttitle = "XAU Agent", overlay = true, initial_capital = 50000, currency = currency.USD, default_qty_type = strategy.fixed, default_qty_value = 1, commission_type = strategy.commission.cash_per_contract, commission_value = 0.0, slippage = 25, process_orders_on_close = true, calc_on_every_tick = false, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+
+// A global output, declared immediately after the strategy() call so it cannot
+// be affected by anything later in the script. Value is na, so it draws
+// nothing; it exists to guarantee the CE10244 output requirement is met.
+plot(na, "anchor")
 
 // ----------------------------------------------------------------- inputs
 

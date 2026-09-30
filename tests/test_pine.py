@@ -122,6 +122,34 @@ def typed_function_params(src: str) -> list[str]:
     return bad
 
 
+def comments_inside_calls(src: str) -> list[tuple[int, str]]:
+    """Comment lines sitting inside an unclosed multi-line function call.
+
+    Pine does not allow this. The comment terminates the call, the remaining
+    arguments are orphaned, and the script mis-parses. The reported error is
+    badly misleading -- the compiler blames line 1 with CE10244 ("a strategy
+    must contain at least one ... plot") even though the script is full of
+    plots and orders.
+
+    This cost a full debugging round trip, so it is checked here.
+    """
+    bad: list[tuple[int, str]] = []
+    prev_code: str | None = None
+    for n, line in enumerate(src.splitlines(), 1):
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith("//"):
+            # Indented comment directly continuing a line that left a call open.
+            if (prev_code is not None
+                    and prev_code.rstrip().endswith((",", "("))
+                    and line.startswith((" ", "\t"))):
+                bad.append((n, s[:60]))
+            continue
+        prev_code = s
+    return bad
+
+
 def reused_exit_ids(src: str) -> dict[str, set[str]]:
     """strategy.exit ids used with more than one from_entry."""
     ids: dict[str, set[str]] = {}
@@ -244,6 +272,32 @@ class TestStrategyPineFile(unittest.TestCase):
             found,
             "no output call at global scope -- Pine will reject this with "
             "CE10244 regardless of how much the script draws",
+        )
+
+    def test_no_comments_inside_multiline_calls(self) -> None:
+        """Regression guard for the bug that actually caused CE10244.
+
+        Six comment lines were sitting inside the strategy() argument list,
+        explaining slippage and fill assumptions. Pine ends the call at the
+        first comment, so strategy() was truncated, the rest of its arguments
+        were orphaned, the script mis-parsed, and the compiler reported "no
+        plot" against line 1 -- while ten plots sat at global scope.
+        """
+        bad = comments_inside_calls(self.src)
+        self.assertEqual(
+            bad, [],
+            "comment(s) inside a multi-line call will silently break parsing: "
+            + "; ".join(f"line {n}: {t}" for n, t in bad),
+        )
+
+    def test_strategy_declaration_is_a_single_logical_call(self) -> None:
+        """The strategy() call must not be interrupted by anything."""
+        m = re.search(r"^strategy\(.*$", self.src, re.M)
+        self.assertIsNotNone(m, "strategy() must start at column 0")
+        self.assertTrue(
+            m.group(0).rstrip().endswith(")"),
+            "strategy() should be written on one line -- splitting it invites "
+            "the comment-in-call parsing failure",
         )
 
     def test_no_output_calls_in_local_scope(self) -> None:
