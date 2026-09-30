@@ -38,7 +38,7 @@
 //   close (process_orders_on_close). Historical and live behaviour match.
 //
 // CHECK YOU ARE RUNNING THIS BUILD
-//   The chart legend must read "XAU Agent v6 ...". If it reads "XAU Agent"
+//   The chart legend must read "XAU v6 ...". If it reads "XAU Agent"
 //   with no version, the chart is still running an older copy and none of the
 //   fixes below are active -- pasting into the Pine Editor does not update an
 //   instance that is already on the chart unless you save the SAME script.
@@ -84,7 +84,7 @@
 //     notch more conservative -- it fills at the NEXT bar's open -- so expect
 //     this tester to read slightly better than the Python backtest.
 
-strategy("XAUUSD Disciplined Agent", shorttitle = "XAU Agent v6", overlay = true, initial_capital = 50000, currency = currency.USD, default_qty_type = strategy.fixed, default_qty_value = 1, commission_type = strategy.commission.cash_per_contract, commission_value = 0.0, slippage = 25, process_orders_on_close = true, calc_on_every_tick = false, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+strategy("XAUUSD Disciplined Agent", shorttitle = "XAU v6", overlay = true, initial_capital = 50000, currency = currency.USD, default_qty_type = strategy.fixed, default_qty_value = 1, commission_type = strategy.commission.cash_per_contract, commission_value = 0.0, slippage = 25, process_orders_on_close = true, calc_on_every_tick = false, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
 
 // A global output, declared immediately after the strategy() call so it cannot
 // be affected by anything later in the script. Value is na, so it draws
@@ -232,8 +232,7 @@ var float sDisp = na
 var float sVol  = na
 
 bodySize = math.abs(close - open)
-isDisp   = not na(atrv) and atrv > 0 and not na(volRat) and
-           bodySize >= dispATR * atrv and volRat >= minVolRatio
+isDisp = not na(atrv) and atrv > 0 and not na(volRat) and bodySize >= dispATR * atrv and volRat >= minVolRatio
 bullDisp = isDisp and close > open
 bearDisp = isDisp and close < open
 
@@ -345,8 +344,13 @@ shortZoneReady = wantShort and not na(sTop) and sTop >= close
 // bar is not how the setup is actually traded.
 longTapRaw  = longZoneReady  and low  <= dTop + tapTol
 shortTapRaw = shortZoneReady and high >= sBot - tapTol
-longTapped  = longZoneReady  and nz(ta.barssince(longTapRaw),  9999) < tapGrace
-shortTapped = shortZoneReady and nz(ta.barssince(shortTapRaw), 9999) < tapGrace
+// ta.barssince() is evaluated unconditionally and stored. Calling it inside
+// an `and` chain lets short-circuiting skip it on some bars, and because it
+// depends on its own history that produces inconsistent results (CW10002).
+longTapBars  = nz(ta.barssince(longTapRaw),  9999)
+shortTapBars = nz(ta.barssince(shortTapRaw), 9999)
+longTapped  = longZoneReady  and longTapBars  < tapGrace
+shortTapped = shortZoneReady and shortTapBars < tapGrace
 
 longDist  = longZoneReady  and atrv > 0 ? math.abs(close - (dTop + dBot) / 2) / atrv : na
 shortDist = shortZoneReady and atrv > 0 ? math.abs(close - (sTop + sBot) / 2) / atrv : na
@@ -428,15 +432,10 @@ lossCapHit    = dailyMaxLoss > 0 and dayPnl <= -dailyMaxLoss
 tradeCapHit   = tradesToday >= maxTrades
 lossStreakHit = consecLoss  >= maxConsecL
 
-riskOK = flat and not targetMet and not lossCapHit and not tradeCapHit and
-         not lossStreakHit and not coolOffActive and barstate.isconfirmed
+riskOK = flat and not targetMet and not lossCapHit and not tradeCapHit and not lossStreakHit and not coolOffActive and barstate.isconfirmed
 
-longSignal  = riskOK and wantLong  and longZoneReady  and longTapped  and
-              haLongOK  and volOK and longScore  >= minScore and
-              longRisk  > 0 and longRR  >= minRR
-shortSignal = riskOK and wantShort and shortZoneReady and shortTapped and
-              haShortOK and volOK and shortScore >= minScore and
-              shortRisk > 0 and shortRR >= minRR
+longSignal = riskOK and wantLong and longZoneReady and longTapped and haLongOK and volOK and longScore >= minScore and longRisk > 0 and longRR >= minRR
+shortSignal = riskOK and wantShort and shortZoneReady and shortTapped and haShortOK and volOK and shortScore >= minScore and shortRisk > 0 and shortRR >= minRR
 
 // Ounces such that a stop-out loses exactly the risk budget. NOTE: on most
 // XAUUSD feeds 1 contract = 1 ounce and a $1 move is $1 per contract, so this
@@ -528,14 +527,7 @@ if showLabels and (longSignal or shortSignal)
     t2    = longSignal ? longTP2   : shortTP2
     rr    = longSignal ? longRR    : shortRR
     qty   = longSignal ? longQty   : shortQty
-    txt   = (dir == 1 ? "LONG " : "SHORT ") + str.tostring(sc) + "/100" +
-            "\nentry " + str.tostring(ent, format.mintick) +
-            "\nSL "    + str.tostring(sl,  format.mintick) +
-            "\nTP2 "   + str.tostring(t2,  format.mintick) +
-            "\nR:R "   + str.tostring(rr, "#.##") +
-            "\n"       + str.tostring(qty) + " oz  risk $" +
-                         str.tostring(riskUSD, "#") +
-            "\n"       + sessName
+    txt = (dir == 1 ? "LONG " : "SHORT ") + str.tostring(sc) + "/100" + "\nentry " + str.tostring(ent, format.mintick) + "\nSL " + str.tostring(sl, format.mintick) + "\nTP2 " + str.tostring(t2, format.mintick) + "\nR:R " + str.tostring(rr, "#.##") + "\n" + str.tostring(qty) + " oz risk $" + str.tostring(riskUSD, "#") + "\n" + sessName
     label.new(bar_index, dir == 1 ? low : high, txt, style = dir == 1 ? label.style_label_up : label.style_label_down, color = color.new(dir == 1 ? colLong : colShort, 12), textcolor = color.white, size = size.small)
 
 // --------------------------------------------------------- diagnostics
@@ -629,12 +621,7 @@ if showTable and barstate.islast
     dec    = wins + losses
     wr     = dec > 0 ? wins / dec * 100.0 : 0.0
     pf     = strategy.grossloss > 0 ? strategy.grossprofit / strategy.grossloss : 0.0
-    blocked = not flat ? "in position" :
-              targetMet ? "target met -- done" :
-              lossCapHit ? "LOSS CAP -- done" :
-              tradeCapHit ? "trade cap -- done" :
-              lossStreakHit ? "2 losses -- done" :
-              coolOffActive ? "cool-off active" : "ready"
+    blocked = not flat ? "in position" : targetMet ? "target met -- done" : lossCapHit ? "LOSS CAP -- done" : tradeCapHit ? "trade cap -- done" : lossStreakHit ? "2 losses -- done" : coolOffActive ? "cool-off active" : "ready"
 
     table.cell(t, 0, 0, "XAU Agent v6", text_color=color.white, bgcolor=color.new(color.blue, 30), text_size=size.small)
     table.cell(t, 1, 0, timeframe.period + " / bias " + biasTF, text_color=color.white, bgcolor=color.new(color.blue, 30), text_size=size.small)

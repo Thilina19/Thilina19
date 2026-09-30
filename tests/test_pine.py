@@ -122,6 +122,64 @@ def typed_function_params(src: str) -> list[str]:
     return bad
 
 
+#: Tokens that, at end of line, mean the expression continues. Pine only
+#: accepts such a continuation when the next line's indent is not a multiple
+#: of 4, and editors renormalise pasted indentation -- so we forbid them.
+CONTINUATION_TOKENS = ("+", "-", "*", "/", "%", ",", "(", "[", "?", ":",
+                       "and", "or", "not")
+
+
+def _code_only(line: str) -> str:
+    """Line with its trailing comment removed, string literals preserved."""
+    out = []
+    i = 0
+    in_str = False
+    while i < len(line):
+        c = line[i]
+        if in_str:
+            if c == "\\":
+                out.append(line[i:i + 2])
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c == "/" and i + 1 < len(line) and line[i + 1] == "/":
+                break
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def continued_lines(src: str) -> list[tuple[int, str]]:
+    """Lines that continue onto the next one, by open bracket OR trailing operator.
+
+    Two separate compile failures came from this, a week apart in symptom:
+    "Missing closing parenthesis" (CE10015) from an open bracket, and "end of
+    line without line continuation" (CE10156) from a string concatenation
+    broken across lines with a trailing '+'. Both have the same root cause --
+    Pine's continuation rule depends on indentation that the editor rewrites
+    on paste -- so both are banned.
+    """
+    bad = []
+    for n, line in enumerate(src.splitlines(), 1):
+        code = _code_only(line).rstrip()
+        if not code or code.lstrip().startswith("//"):
+            continue
+        if code.endswith("=>"):          # function definition, not a continuation
+            continue
+        if n in set(unbalanced_lines(src)):
+            bad.append((n, "open bracket"))
+            continue
+        for tok in CONTINUATION_TOKENS:
+            if code.endswith(tok):
+                bad.append((n, f"trailing {tok!r}"))
+                break
+    return bad
+
+
 def unbalanced_lines(src: str) -> list[int]:
     """Lines that leave a call open, i.e. rely on Pine line continuation.
 
@@ -326,6 +384,50 @@ class TestStrategyPineFile(unittest.TestCase):
             f"lines rely on line continuation and can be broken by the "
             f"editor's indentation handling: {bad}",
         )
+
+    def test_no_line_continuation_anywhere(self) -> None:
+        """Neither open brackets nor trailing operators may continue a line.
+
+        Pine accepts a continuation only when the next line's indent is not a
+        multiple of 4, and the TradingView editor renormalises pasted
+        indentation. This produced two different compile errors on two
+        different constructs: CE10015 on a broken call and CE10156 on a broken
+        string concatenation.
+        """
+        bad = continued_lines(self.src)
+        self.assertEqual(
+            bad, [],
+            "lines continue onto the next and can be broken by the editor: "
+            + "; ".join(f"line {n} ({why})" for n, why in bad),
+        )
+
+    def test_shorttitle_within_pine_limit(self) -> None:
+        """Pine rejects a shorttitle longer than 10 characters."""
+        import re as _re
+        m = _re.search(r'shorttitle\s*=\s*"([^"]*)"', self.code)
+        self.assertIsNotNone(m)
+        self.assertLessEqual(
+            len(m.group(1)), 10,
+            f"shorttitle {m.group(1)!r} is {len(m.group(1))} chars; "
+            f"Pine's limit is 10 (SHORT_TITLE_TOO_LONG)",
+        )
+
+    def test_barssince_not_inside_short_circuit(self) -> None:
+        """ta.barssince() must be evaluated unconditionally (CW10002).
+
+        Inside an `and` chain, short-circuiting can skip it on some bars, and
+        because it depends on its own history the result becomes inconsistent.
+        """
+        import re as _re
+        for n, line in enumerate(self.code.splitlines(), 1):
+            if "ta.barssince" not in line:
+                continue
+            before = line.split("ta.barssince")[0]
+            self.assertNotRegex(
+                before, r"\b(and|or)\b",
+                f"line {n}: ta.barssince() sits behind a short-circuiting "
+                f"operator; hoist it to its own assignment",
+            )
 
     def test_no_comments_inside_multiline_calls(self) -> None:
         """Regression guard for the bug that actually caused CE10244.
