@@ -320,6 +320,22 @@ class TestStrategyPineFile(unittest.TestCase):
         self.assertIn("activeSL", self.code)
         self.assertRegex(self.code, r"plot\(inPos \? activeSL")
 
+    def test_volatility_gate_is_relative_not_absolute(self) -> None:
+        """Regression guard: the absolute ATR-percent band produced zero trades
+        on 5m because gold's ATR is ~0.11% of price there against a 0.12%
+        floor tuned for 15m. The gate must compare ATR to its own average."""
+        self.assertNotIn("minAtrPct", self.code)
+        self.assertNotIn("maxAtrPct", self.code)
+        self.assertIn("atrAvg", self.code)
+        self.assertRegex(self.code, r"volMult\s*>=\s*minVolMult")
+
+    def test_reports_why_no_trade_fired(self) -> None:
+        """An empty tester must say which gate is binding."""
+        for token in ("nBias", "nZone", "nTap", "nHA", "nVol", "nScore", "nRisk"):
+            self.assertIn(token, self.code,
+                          f"diagnostic counter {token} is missing")
+        self.assertIn("WHY NO TRADE", self.src)
+
     def test_exposes_alerts(self) -> None:
         self.assertIn("alertcondition(", self.code)
         self.assertIn("alert(", self.code)

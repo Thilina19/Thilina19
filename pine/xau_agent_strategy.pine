@@ -6,7 +6,12 @@
 // for all history, and reports real statistics in TradingView's Strategy Tester.
 //
 // HOW TO USE
-//   1. Open CAPITALCOM:XAUUSD (the feed this account already charts) on 1h.
+//   1. Open CAPITALCOM:XAUUSD (the feed this account already charts).
+//      Timeframe: 15m or 1h. The chart timeframe supplies BOTH the
+//      order-block zone and the entry trigger, so it is the zone timeframe of
+//      the design. On 5m the zones are 5-minute zones -- far noisier, and a
+//      60-bar zone lifetime is only 5 hours. 1h is the designed setting; 15m
+//      is a reasonable intraday compromise.
 //   2. Pine Editor -> paste this -> Save -> Add to chart.
 //   3. Set "Bias timeframe" to 4h (or 1D for a slower, more selective read).
 //   4. Open the Strategy Tester tab for win rate, profit factor and drawdown,
@@ -117,8 +122,15 @@ tp2R        = input.float(2.2, "TP2 (R)",                  group=grpT, minval=0.
 beAtTP1     = input.bool(true,"Move SL to breakeven at TP1", group=grpT)
 
 grpS = "Sessions and volatility"
-minAtrPct   = input.float(0.12,"Min ATR (% of price)",     group=grpS, minval=0.0, step=0.01)
-maxAtrPct   = input.float(1.20,"Max ATR (% of price)",     group=grpS, minval=0.1, step=0.05)
+// Volatility is measured RELATIVE to the instrument's own recent average, not
+// as an absolute percentage of price. An absolute band is timeframe-dependent
+// and silently breaks the script: gold's ATR is about 0.38% of price on 1h but
+// only ~0.11% on 5m, so the old 0.12% floor rejected every single 5m bar and
+// the strategy produced no trades at all on that timeframe. A ratio to the
+// 100-bar average ATR means the same settings work on 5m, 15m and 1h.
+volAvgLen   = input.int(100,  "Volatility baseline (bars)", group=grpS, minval=20)
+minVolMult  = input.float(0.55,"Min volatility (x own average)", group=grpS, minval=0.1, step=0.05)
+maxVolMult  = input.float(2.50,"Max volatility (x own average)", group=grpS, minval=0.5, step=0.1)
 asianPenalty= input.int(12,   "Asian session penalty",     group=grpS, minval=0, maxval=40,
    tooltip="Gold produces its most false breaks 00:00-07:00 UTC. Penalised, not banned.")
 
@@ -282,8 +294,9 @@ coolOffActive = not na(lastLossT) and (time - lastLossT) < cooloffMin * 60 * 100
 
 // ------------------------------------------------------------- scoring
 
-atrPct   = close > 0 and not na(atrv) ? atrv / close * 100.0 : na
-volOK    = not na(atrPct) and atrPct >= minAtrPct and atrPct <= maxAtrPct
+atrAvg  = ta.sma(atrv, volAvgLen)
+volMult = not na(atrAvg) and atrAvg > 0 ? atrv / atrAvg : na
+volOK   = not na(volMult) and volMult >= minVolMult and volMult <= maxVolMult
 
 wantLong  = bias ==  1
 wantShort = bias == -1
@@ -516,6 +529,54 @@ if showLabels and (longSignal or shortSignal)
        color = color.new(dir == 1 ? colLong : colShort, 12),
        textcolor = color.white, size = size.small)
 
+// --------------------------------------------------------- diagnostics
+// An empty Strategy Tester is uninformative on its own: it cannot distinguish
+// "the market never offered this setup" from "a filter is misconfigured and
+// rejects everything". These counters classify each confirmed bar by the FIRST
+// gate it failed, so the panel names the binding constraint.
+
+var int nBias  = 0
+var int nZone  = 0
+var int nSide  = 0
+var int nTap   = 0
+var int nHA    = 0
+var int nVol   = 0
+var int nScore = 0
+var int nRisk  = 0
+var int nFired = 0
+var int nBars  = 0
+
+wantLongNow  = bias == 1
+zoneExists   = wantLongNow ? not na(dBot) : not na(sTop)
+zoneReadyNow = wantLongNow ? longZoneReady : shortZoneReady
+tappedNow    = wantLongNow ? longTapped    : shortTapped
+haOKNow      = wantLongNow ? haLongOK      : haShortOK
+scoreNow     = wantLongNow ? longScore     : shortScore
+
+if barstate.isconfirmed
+    nBars := nBars + 1
+    if bias == 0
+        nBias := nBias + 1
+    else if not zoneExists
+        nZone := nZone + 1
+    else if not zoneReadyNow
+        nSide := nSide + 1
+    else if not tappedNow
+        nTap := nTap + 1
+    else if not haOKNow
+        nHA := nHA + 1
+    else if not volOK
+        nVol := nVol + 1
+    else if scoreNow < minScore
+        nScore := nScore + 1
+    else if not riskOK
+        nRisk := nRisk + 1
+    else
+        nFired := nFired + 1
+
+f_pct(n) =>
+    nBars > 0 ? str.tostring(n * 100.0 / nBars, "#.#") + "%" : "-"
+
 // ------------------------------------------------------- plotted levels
 // These plot() calls are REQUIRED, not decorative.
 //
@@ -561,8 +622,7 @@ plotshape(shortSignal, title="Short signal", style=shape.triangledown,
 
 // Declared at global scope: a `var` inside an if-block initialises on the first
 // bar the branch runs, which is fragile. This is created once, always.
-var table t = table.new(position.top_right, 2, 11,
-   border_width=1, frame_width=1, frame_color=color.gray)
+var table t = table.new(position.top_right, 2, 21, border_width=1, frame_width=1, frame_color=color.gray)
 
 if showTable and barstate.islast
     wins   = strategy.wintrades
@@ -622,6 +682,37 @@ if showTable and barstate.islast
 
     table.cell(t, 0, 10, "profit factor", text_size=size.small)
     table.cell(t, 1, 10, str.tostring(pf, "#.##"), text_size=size.small)
+
+    table.cell(t, 0, 11, "volatility", text_size=size.small)
+    table.cell(t, 1, 11, na(volMult) ? "warming up" :
+       str.tostring(volMult, "#.##") + "x  (" +
+       str.tostring(minVolMult, "#.##") + "-" + str.tostring(maxVolMult, "#.##") + ")",
+       text_color = volOK ? colLong : colShort, text_size=size.small)
+
+    // Why no trade fired: each confirmed bar counted against the FIRST gate it
+    // failed. The largest number is the binding constraint.
+    table.cell(t, 0, 12, "WHY NO TRADE", text_color=color.white,
+       bgcolor=color.new(color.gray, 40), text_size=size.small)
+    table.cell(t, 1, 12, str.tostring(nBars) + " bars",
+       text_color=color.white, bgcolor=color.new(color.gray, 40), text_size=size.small)
+    table.cell(t, 0, 13, "no 4h bias",       text_size=size.tiny)
+    table.cell(t, 1, 13, f_pct(nBias),       text_size=size.tiny)
+    table.cell(t, 0, 14, "no zone",          text_size=size.tiny)
+    table.cell(t, 1, 14, f_pct(nZone),       text_size=size.tiny)
+    table.cell(t, 0, 15, "zone wrong side",  text_size=size.tiny)
+    table.cell(t, 1, 15, f_pct(nSide),       text_size=size.tiny)
+    table.cell(t, 0, 16, "zone not tapped",  text_size=size.tiny)
+    table.cell(t, 1, 16, f_pct(nTap),        text_size=size.tiny)
+    table.cell(t, 0, 17, "no HA trigger",    text_size=size.tiny)
+    table.cell(t, 1, 17, f_pct(nHA),         text_size=size.tiny)
+    table.cell(t, 0, 18, "volatility gate",  text_size=size.tiny)
+    table.cell(t, 1, 18, f_pct(nVol),
+       text_color = nVol > nBars / 2 ? colShort : color.gray, text_size=size.tiny)
+    table.cell(t, 0, 19, "score below min",  text_size=size.tiny)
+    table.cell(t, 1, 19, f_pct(nScore),      text_size=size.tiny)
+    table.cell(t, 0, 20, "risk rules / fired", text_size=size.tiny)
+    table.cell(t, 1, 20, f_pct(nRisk) + " / " + str.tostring(nFired),
+       text_size=size.tiny)
 
 // ------------------------------------------------------------- alerts
 // Create these in TradingView: right-click chart -> Add alert -> Condition =

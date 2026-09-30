@@ -206,6 +206,15 @@ treated any touch as mitigation — which made the setup logically impossible,
 since "price is at the zone" and "the zone is untouched" cannot both hold. A tap
 *is* the trigger. `tests/test_engine.py` guards both of these regressions.
 
+**Volatility is gated relative to the instrument's own average, never as an
+absolute percentage of price.** An absolute band is timeframe dependent, and it
+failed silently: gold's ATR is ~0.38% of price on 1h but only ~0.11% on 5m, so a
+0.12% floor tuned for 15m rejected *every* 5m bar. Because the gate is mandatory,
+the strategy produced zero trades on 5m — indistinguishable from "no setups
+occurred". The gate now compares ATR to its own 100-bar average, which is
+invariant to bar size, and a test asserts the pass rate is unchanged when
+volatility is scaled by 4x and 20x.
+
 **Insufficient data raises instead of returning nothing.** Too little history
 means every bar is skipped during warm-up and the system reports no setups
 forever — indistinguishable from patience, actually a dead pipeline. It now

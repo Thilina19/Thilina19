@@ -467,6 +467,109 @@ class TestDataSufficiency(unittest.TestCase):
         self.assertEqual(res.stats.n, 0)  # confirms it really would find nothing
 
 
+def rescale_volatility(bars: list[Bar], k: float, base: float = 4000.0) -> list[Bar]:
+    """Rebuild a series with 1/k the bar-to-bar volatility, same structure.
+
+    This stands in for viewing the same market on a lower timeframe: the shape
+    of the path is preserved but every excursion is smaller.
+    """
+    out: list[Bar] = []
+    price = base
+    for b in bars:
+        o = price
+        c = o + (b.c - b.o) / k
+        h = o + (b.h - b.o) / k
+        l = o + (b.l - b.o) / k
+        out.append(Bar(b.t, o, max(o, c, h), min(o, c, l), c, b.v))
+        price = c
+    return out
+
+
+class TestVolatilityGateIsTimeframeIndependent(unittest.TestCase):
+    """Regression guard for the bug that produced zero trades on 5m.
+
+    The volatility filter was an absolute band on ATR as a percentage of price,
+    tuned at 15m. Gold's ATR is ~0.38% of price on 1h but only ~0.11% on 5m, so
+    the 0.12% floor rejected every single 5m bar. Because the gate is mandatory,
+    the strategy silently produced no trades at all on that timeframe -- which
+    looks identical to "no setups occurred".
+
+    The gate is now a ratio to the instrument's own rolling average ATR, which
+    is invariant to how large the bars are.
+    """
+
+    @staticmethod
+    def pass_rate(bars: list[Bar], p: StrategyParams) -> float:
+        view = MarketView.build(bars, p)
+        checked = passed = 0
+        for i in range(len(bars)):
+            a, avg = view.atr[i], view.atr_avg[i]
+            if a is None or avg is None or avg <= 0:
+                continue
+            checked += 1
+            if p.min_vol_mult <= a / avg <= p.max_vol_mult:
+                passed += 1
+        return passed / checked if checked else 0.0
+
+    def test_same_pass_rate_at_one_quarter_the_volatility(self) -> None:
+        p = StrategyParams()
+        loud = synthetic_bars(2000, interval="15m", seed=17)
+        quiet = rescale_volatility(loud, 4.0)
+
+        loud_rate = self.pass_rate(loud, p)
+        quiet_rate = self.pass_rate(quiet, p)
+
+        self.assertGreater(loud_rate, 0.5, "the gate rejects most normal bars")
+        self.assertAlmostEqual(
+            loud_rate, quiet_rate, delta=0.05,
+            msg=f"the volatility gate is timeframe dependent: {loud_rate:.1%} "
+                f"of bars pass at full volatility but {quiet_rate:.1%} at a "
+                f"quarter of it. This is exactly the failure that produced "
+                f"zero trades on 5m.",
+        )
+
+    def test_still_passes_at_one_twentieth_the_volatility(self) -> None:
+        """A 5m chart is roughly this much quieter than a daily one."""
+        p = StrategyParams()
+        bars = rescale_volatility(synthetic_bars(2000, interval="5m", seed=23), 20.0)
+        self.assertGreater(
+            self.pass_rate(bars, p), 0.5,
+            "a low-volatility timeframe is being filtered out wholesale",
+        )
+
+    def test_gate_still_rejects_genuine_extremes(self) -> None:
+        """Relative must not mean toothless: a real volatility spike is caught."""
+        p = StrategyParams()
+        bars = list(synthetic_bars(1200, interval="15m", seed=31))
+        # Blow out the last 20 bars to many times the prevailing range.
+        for i in range(len(bars) - 20, len(bars)):
+            b = bars[i]
+            mid = (b.h + b.l) / 2
+            span = (b.h - b.l) * 12
+            bars[i] = Bar(b.t, b.o, mid + span / 2, mid - span / 2, b.c, b.v)
+        view = MarketView.build(bars, p)
+        i = len(bars) - 1
+        a, avg = view.atr[i], view.atr_avg[i]
+        self.assertIsNotNone(a)
+        self.assertIsNotNone(avg)
+        self.assertGreater(a / avg, p.max_vol_mult,
+                           "a 12x volatility spike should breach the ceiling")
+
+    def test_atr_avg_series_aligns_with_bars(self) -> None:
+        p = StrategyParams()
+        bars = synthetic_bars(600, interval="15m")
+        view = MarketView.build(bars, p)
+        self.assertEqual(len(view.atr_avg), len(bars))
+        self.assertIsNone(view.atr_avg[0], "baseline cannot exist on bar 0")
+        self.assertIsNotNone(view.atr_avg[-1])
+
+    def test_absolute_atr_percent_band_is_gone(self) -> None:
+        """The old timeframe-dependent parameters must not come back."""
+        p = StrategyParams()
+        self.assertFalse(hasattr(p, "min_atr_pct"))
+        self.assertFalse(hasattr(p, "max_atr_pct"))
+
+
 class TestBacktester(unittest.TestCase):
     def test_runs_and_respects_daily_trade_cap(self) -> None:
         cfg = AgentConfig()

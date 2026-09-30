@@ -283,11 +283,30 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     print()
     print(f"ATR as % of price: median {q(atrp, .5):.3f}%  "
           f"min {min(atrp):.3f}%  max {max(atrp):.3f}%")
-    print(f"   configured band {p.min_atr_pct * 100:.3f}% - {p.max_atr_pct * 100:.3f}%")
-    outside = sum(1 for x in atrp
-                  if x < p.min_atr_pct * 100 or x > p.max_atr_pct * 100)
-    print(f"   {100 * outside / len(atrp):.1f}% of bars fall outside it "
-          f"(those are skipped)")
+    print("   (informational only -- the volatility gate is relative, not "
+          "absolute, so it\n    carries across timeframes unchanged)")
+
+    # The gate that actually runs: ATR against its own rolling average.
+    real_atr = [v for v in a if v is not None]
+    if len(real_atr) >= p.vol_avg_len:
+        from .indicators import sma as _sma
+        base = _sma(real_atr, p.vol_avg_len)
+        mults = [real_atr[i] / base[i] for i in range(len(base))
+                 if base[i] and base[i] > 0]
+        outside = sum(1 for m in mults
+                      if m < p.min_vol_mult or m > p.max_vol_mult)
+        print(f"volatility vs own {p.vol_avg_len}-bar average: "
+              f"median {q(mults, .5):.2f}x  p10 {q(mults, .1):.2f}x  "
+              f"p90 {q(mults, .9):.2f}x")
+        print(f"   configured band {p.min_vol_mult:.2f}-{p.max_vol_mult:.2f}x")
+        print(f"   {100 * outside / len(mults):.1f}% of bars fall outside it "
+              f"(those are skipped)")
+        if outside > len(mults) * 0.6:
+            print("   WARNING: this gate is rejecting most bars. It was the "
+                  "cause of a\n   strategy that produced zero trades on 5m.")
+    else:
+        print(f"volatility gate: need {p.vol_avg_len} ATR values to judge, "
+              f"have {len(real_atr)}")
 
     blocks = find_order_blocks(
         bars, len(bars) - 1, atr_values=a, vol_ratios=vr,

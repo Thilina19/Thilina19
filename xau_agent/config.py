@@ -125,10 +125,18 @@ class StrategyParams:
 
     # --- Volatility ---
     atr_period: int = 14
-    # Skip when gold is too quiet to pay for the spread, or so wild that
-    # stops are meaningless. Values are ATR as a fraction of price.
-    min_atr_pct: float = 0.0012
-    max_atr_pct: float = 0.0120
+    # Skip when gold is unusually quiet (the move cannot pay for the spread) or
+    # unusually wild (stops become meaningless).
+    #
+    # This is measured RELATIVE to the instrument's own recent average ATR, not
+    # as an absolute percentage of price. An absolute band is timeframe
+    # dependent and fails silently: gold's ATR is about 0.38% of price on 1h but
+    # only ~0.11% on 5m, so a 0.12% floor tuned for 15m rejects every single 5m
+    # bar and the strategy produces no trades at all. A ratio to the rolling
+    # average ATR carries across timeframes unchanged.
+    vol_avg_len: int = 100
+    min_vol_mult: float = 0.55
+    max_vol_mult: float = 2.50
 
     # --- Order blocks ---
     # A displacement leg must move at least this many ATR to qualify as the
@@ -178,8 +186,10 @@ class StrategyParams:
     def validate(self) -> None:
         if self.ema_fast >= self.ema_slow:
             raise ValueError("ema_fast must be shorter than ema_slow")
-        if not 0 < self.min_atr_pct < self.max_atr_pct:
-            raise ValueError("require 0 < min_atr_pct < max_atr_pct")
+        if not 0 < self.min_vol_mult < self.max_vol_mult:
+            raise ValueError("require 0 < min_vol_mult < max_vol_mult")
+        if self.vol_avg_len < 20:
+            raise ValueError("vol_avg_len below 20 is too noisy to be a baseline")
         if self.tp2_r <= self.tp1_r:
             raise ValueError("tp2_r must exceed tp1_r")
         if not 0 < self.tp1_close_fraction < 1:
@@ -200,8 +210,8 @@ class StrategyParams:
         "min_confluence_score",
         "sl_atr_buffer",
         "tp2_r",
-        "min_atr_pct",
-        "max_atr_pct",
+        "min_vol_mult",
+        "max_vol_mult",
         "asian_score_penalty",
     )
 

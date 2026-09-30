@@ -19,7 +19,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from .config import StrategyParams
-from .indicators import Bar, HABar, atr, closes, ema, heikin_ashi, rsi, volume_ratio
+from .indicators import (
+    Bar, HABar, atr, closes, ema, heikin_ashi, rsi, sma, volume_ratio,
+)
 from .structure import (
     Bias,
     OrderBlock,
@@ -117,13 +119,26 @@ class MarketView:
     ha: list[HABar]
     ema_fast: list[float | None]
     ema_slow: list[float | None]
+    # Rolling average ATR, the baseline the volatility gate compares against.
+    atr_avg: list[float | None]
 
     @classmethod
     def build(cls, bars: list[Bar], p: StrategyParams) -> "MarketView":
         cl = closes(bars)
+        atr_series = atr(bars, p.atr_period)
+        # sma() cannot take Nones, so warm-up is filled forward from the first
+        # real ATR value and the leading positions are masked back to None.
+        filled = [v for v in atr_series if v is not None]
+        avg: list[float | None] = [None] * len(bars)
+        if len(filled) >= p.vol_avg_len:
+            offset = len(bars) - len(filled)
+            raw = sma(filled, p.vol_avg_len)
+            for i, v in enumerate(raw):
+                avg[offset + i] = v
         return cls(
             bars=bars,
-            atr=atr(bars, p.atr_period),
+            atr=atr_series,
+            atr_avg=avg,
             rsi=rsi(bars, 14),
             vol_ratio=volume_ratio(bars, p.ob_volume_lookback),
             ha=heikin_ashi(bars),
@@ -265,18 +280,26 @@ class Strategy:
         items.append(ScoreItem("entry_volume", vol_pts, 10, vol_pts > 0, vdetail))
 
         # -------------------------------------------- 6. volatility regime (10)
-        atr_pct = a / bar.c
-        if p.min_atr_pct <= atr_pct <= p.max_atr_pct:
-            vol_regime_pts = 10
-            rdetail = f"ATR {atr_pct * 100:.3f}% of price (in band)"
-            regime_ok = True
-        else:
+        # Relative to this instrument's own recent average ATR, so the same
+        # thresholds hold on 5m, 15m and 1h.
+        a_avg = entry_view.atr_avg[entry_idx]
+        if a_avg is None or a_avg <= 0:
             vol_regime_pts = 0
             regime_ok = False
-            rdetail = (
-                f"ATR {atr_pct * 100:.3f}% outside "
-                f"{p.min_atr_pct * 100:.3f}-{p.max_atr_pct * 100:.3f}%"
-            )
+            rdetail = "volatility baseline still warming up"
+        else:
+            mult = a / a_avg
+            if p.min_vol_mult <= mult <= p.max_vol_mult:
+                vol_regime_pts = 10
+                regime_ok = True
+                rdetail = f"ATR {mult:.2f}x its own average (in band)"
+            else:
+                vol_regime_pts = 0
+                regime_ok = False
+                rdetail = (
+                    f"ATR {mult:.2f}x its own average, outside "
+                    f"{p.min_vol_mult:.2f}-{p.max_vol_mult:.2f}"
+                )
         items.append(ScoreItem("volatility", vol_regime_pts, 10, regime_ok, rdetail))
         if not regime_ok:
             return Rejection(bar.t, sum(i.points for i in items),
