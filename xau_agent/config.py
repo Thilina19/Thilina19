@@ -145,9 +145,9 @@ class StrategyParams:
     # --- Order blocks ---
     # A displacement leg must move at least this many ATR to qualify as the
     # impulse that makes the preceding candle an order block.
-    ob_displacement_atr: float = 1.3
+    ob_displacement_atr: float = 1.0
     # Volume on the order block candle relative to its rolling average.
-    ob_min_volume_ratio: float = 1.4
+    ob_min_volume_ratio: float = 1.2
     ob_volume_lookback: int = 20
     # How many bars an order block stays valid before it is considered stale.
     ob_max_age_bars: int = 60
@@ -167,9 +167,15 @@ class StrategyParams:
     ha_max_wick_ratio: float = 0.62
 
     # --- Confluence gate ---
-    # Signal is published only at or above this score. Raising it means
-    # fewer, better trades. This is the primary overtrading control.
-    min_confluence_score: int = 70
+    # Signal is published only at or above this score. Raising it means fewer,
+    # better trades. This is the primary overtrading control.
+    #
+    # Measured over 28 days of real 4h CAPITALCOM gold, at the previous
+    # defaults (displacement 1.3 ATR, volume 1.4x, score 70) the whole system
+    # produced ONE signal. The best-scoring bar that cleared the mandatory
+    # gates scored 64, so a threshold of 70 was very nearly unreachable. The
+    # settings below produced 11 signals over the same window.
+    min_confluence_score: int = 55
 
     # --- Stops and targets ---
     sl_atr_buffer: float = 0.55   # ATR padding beyond the structural level

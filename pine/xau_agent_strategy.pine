@@ -38,7 +38,7 @@
 //   close (process_orders_on_close). Historical and live behaviour match.
 //
 // CHECK YOU ARE RUNNING THIS BUILD
-//   The chart legend must read "XAU Agent v5 ...". If it reads "XAU Agent"
+//   The chart legend must read "XAU Agent v6 ...". If it reads "XAU Agent"
 //   with no version, the chart is still running an older copy and none of the
 //   fixes below are active -- pasting into the Pine Editor does not update an
 //   instance that is already on the chart unless you save the SAME script.
@@ -84,7 +84,7 @@
 //     notch more conservative -- it fills at the NEXT bar's open -- so expect
 //     this tester to read slightly better than the Python backtest.
 
-strategy("XAUUSD Disciplined Agent", shorttitle = "XAU Agent v5", overlay = true, initial_capital = 50000, currency = currency.USD, default_qty_type = strategy.fixed, default_qty_value = 1, commission_type = strategy.commission.cash_per_contract, commission_value = 0.0, slippage = 25, process_orders_on_close = true, calc_on_every_tick = false, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+strategy("XAUUSD Disciplined Agent", shorttitle = "XAU Agent v6", overlay = true, initial_capital = 50000, currency = currency.USD, default_qty_type = strategy.fixed, default_qty_value = 1, commission_type = strategy.commission.cash_per_contract, commission_value = 0.0, slippage = 25, process_orders_on_close = true, calc_on_every_tick = false, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
 
 // A global output, declared immediately after the strategy() call so it cannot
 // be affected by anything later in the script. Value is na, so it draws
@@ -113,7 +113,7 @@ biasMode = input.string("ema_fallback", "Bias rule", options=["strict", "ema_fal
 grpZ = "Order blocks"
 atrLen      = input.int(14,   "ATR length",                group=grpZ, minval=2)
 dispATR = input.float(1.3,"Displacement (x ATR)", group=grpZ, minval=0.3, step=0.1, tooltip="Body of the impulse candle as a multiple of ATR. On real gold 1h, 3.6% of bars clear 1.3.")
-minVolRatio = input.float(1.4,"Displacement volume (x avg)",group=grpZ, minval=0.5, step=0.1, tooltip="Volume on the DISPLACEMENT candle, not the block candle. Measured on 400 real gold 1h bars, displacement candles run a median 1.83x average while block candles run 0.84x -- putting this filter on the block candle rejects nearly every genuine setup.")
+minVolRatio = input.float(1.2,"Displacement volume (x avg)",group=grpZ, minval=0.5, step=0.1, tooltip="Volume on the DISPLACEMENT candle, not the block candle. Measured on 400 real gold 1h bars, displacement candles run a median 1.83x average while block candles run 0.84x -- putting this filter on the block candle rejects nearly every genuine setup.")
 volLB       = input.int(20,   "Volume average length",     group=grpZ, minval=5)
 obMaxAge    = input.int(60,   "Zone max age (bars)",       group=grpZ, minval=5)
 tapTolATR   = input.float(0.35,"Tap tolerance (x ATR)",    group=grpZ, minval=0.0, step=0.05)
@@ -636,7 +636,7 @@ if showTable and barstate.islast
               lossStreakHit ? "2 losses -- done" :
               coolOffActive ? "cool-off active" : "ready"
 
-    table.cell(t, 0, 0, "XAU Agent v5", text_color=color.white, bgcolor=color.new(color.blue, 30), text_size=size.small)
+    table.cell(t, 0, 0, "XAU Agent v6", text_color=color.white, bgcolor=color.new(color.blue, 30), text_size=size.small)
     table.cell(t, 1, 0, timeframe.period + " / bias " + biasTF, text_color=color.white, bgcolor=color.new(color.blue, 30), text_size=size.small)
 
     table.cell(t, 0, 1, "bias",  text_size=size.small)
