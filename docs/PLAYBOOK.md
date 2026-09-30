@@ -107,6 +107,47 @@ whether this works.
 
 ---
 
+## Getting your trades out of TradingView
+
+The review loop only learns from trades it can see. To feed it real ones:
+
+### First, check whether an export exists at all
+
+Add the script to a chart and look at the bottom panel tabs.
+
+- **"Strategy Tester" tab is present** -> the script is a `strategy()`. Export
+  is available, follow the steps below.
+- **No Strategy Tester tab** -> it is an `indicator()`. There is no List of
+  Trades to export, however complete its on-chart dashboard looks. An indicator
+  that shows "Closed Trades / Win Rate / Profit Factor" is computing those in
+  its own variables and drawing them in a table; TradingView has no idea any
+  trades happened, so there is nothing to download.
+
+That second case is common and is not a settings problem. The fix is to convert
+the script to a `strategy()`, which usually means replacing its internal
+bookkeeping with `strategy.entry` and `strategy.exit` calls. Once it is a
+strategy, TradingView tracks every trade itself and the export appears.
+
+### Exporting from a strategy
+
+1. Strategy Tester tab -> **List of Trades**
+2. The **download icon** at the top right of that panel
+3. Save the CSV
+
+### Importing
+
+```bash
+python3 -m xau_agent.cli import-tv trades.csv --risk 250
+python3 -m xau_agent.cli review
+```
+
+`--risk` is how R-multiples are derived: the export carries no stop, so R comes
+from P&L divided by the per-trade risk budget. That is exact when every position
+was sized to a fixed risk and wrong otherwise, so pass the real figure.
+
+The import also reads Run-up and Drawdown into MFE and MAE, which is what lets
+the review answer whether your targets are too near or your stops too tight.
+
 ## After every trade
 
 Log it. An unlogged trade teaches the system nothing, and the journal is the
